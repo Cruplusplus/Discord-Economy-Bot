@@ -1,0 +1,34 @@
+# Entorno y Secretos
+.env
+.env.*
+.env.local
+!.env.example
+
+# Base de datos y persistencia local
+stats.json
+*.json.bak
+
+# Caché de Python y bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Entornos virtuales
+venv/
+.venv/
+env/
+ENV/
+
+# Logs del sistema
+*.log
+
+# Configuraciones de IDEs
+.vscode/
+.idea/
+
+# Sistemas operativos
+.DS_Store
+Thumbs.db
+MEMORY.md
+AGENTS.md
