@@ -11,29 +11,47 @@ Bot de Discord temático inspirado en **Ivy de Deadlock**, diseñado para gestio
 - **Trabajo Callejero (`%work`):** Genera almas periódicamente con recompensas aleatorias.
 - **Robo con Riesgo (`%rob`):** Sistema de dados (d20). Si fallas, la policía te cobra fianza o te envía al calabozo.
 - **Transferencias (`%pay`):** Envía almas a cualquier vecino del servidor.
-- **Leaderboard Dinámico (`%rank`):** Ranking del Top 10 más rico con medallas y seguimiento personal de posición.
+- **Leaderboard Dinámico (`%rank`):** Ranking del Top 10 más rico con medallas, etiqueta de inactividad y seguimiento personal de posición.
 - **👑 Rol Dinámico "El Más Millonario":** Se otorga automáticamente al líder de la economía (#1) y se le retira en tiempo real si es superado.
 
 ### 🎲 Apuestas y Minijuegos (Timba)
 - **Cara o Cruz (`%coin`):** Apuestas rápidas de doble o nada.
 - **Ruleta Callejera (`%ruleta`):** Apuesta a rojo, negro o al verde pleno (pago x14).
-- **Sistema de Duelos y Apuestas de Espectadores (`%duelo` / `%apostar`):**
+- **Sistema de Duelos y Apuestas de Espectadores (`%duelo` / `%bet`):**
   - Desafía a otro miembro a un combate 1v1.
   - El servidor dispone de una ventana de tiempo para apostar por su combatiente preferido.
   - Pozo compartido y recompensas garantizadas incluso sin contra-apostantes.
 
 ### ⚡ Eventos Aleatorios Periódicos (Ivy's Street Events)
-El bot ejecuta un ciclo en segundo plano con probabilidad configurable que activa eventos interactivos exclusivos en el canal de economía:
+El bot ejecuta un ciclo en segundo plano con intervalo dinámico e impredecible que activa eventos interactivos exclusivos en el canal de economía:
 1. **Drop de Almas:** Botón interactivo para el vecino con los mejores reflejos.
 2. **Trivia de Ivy:** Preguntas y acertijos de Deadlock y Spanish Harlem.
 3. **Raid / Emboscada Cooperativa:** Un enemigo con barra de vida que requiere el ataque coordinado de múltiples usuarios distintos para repartir el botín.
 4. **Desafío de Ruleta Rusa:** 70% de ganar un premio gordo o 30% de ir directo a prisión.
 5. **Lluvia de Almas:** Multiplicador temporal de ganancias para el comando `%work`.
-6. **Robin Hood (Impuesto a la Gárgola Millonaria):** Le cobra un porcentaje al líder más rico y suelta el botín en las calles para que lo recolecte cualquiera.
+6. **Robin Hood (Impuesto a la Gárgola Millonaria):** Si el líder más rico acumula almas sin arriesgarlas en la calle, la probabilidad del evento escala progresivamente (24h -> 15%, 48h -> 30%, 72h -> 50%). Cuenta con protección anti-abuso (*Skin in the Game*): requiere apostar al menos el 2% de su patrimonio total (con piso mínimo de 500 almas) para reiniciar su reloj de inactividad.
 
-### 🎭 Personalidad y Lore
-- Diálogos, embeds y respuestas ambientados con la voz leal, pícara y protectora de **Ivy de Deadlock**.
-- Comandos interactivos adicionales: `%deadlock`, `%kiss`, `%gif` (Giphy API), `%hablar` (puente de mensajería para administradores), entre otros.
+---
+
+## 🏛️ Arquitectura Modular del Código
+
+El módulo de economía está estructurado como un paquete modular en Python bajo patrones de alta cohesión, separación de responsabilidades y herencia cooperativa mediante **Mixins**:
+
+```text
+Discord Economy Bot/
+├── la_creatura_bot.py       # Entrada principal, ciclo de vida del bot y comandos utilitarios
+├── stats.json               # Persistencia local de balances y estadísticas (ignorado en git)
+├── requirements.txt         # Dependencias del proyecto
+└── economy/                 # Paquete modular de economía
+    ├── __init__.py          # Exporta la clase Economy y setup(bot) para load_extension
+    ├── config.py            # Cero números mágicos: constantes de balance y parseo de .env
+    ├── lore.py              # Banco inmersivo de diálogos, citas de Ivy y preguntas de trivia
+    ├── database.py          # DataManager con escrituras atómicas (.tmp -> os.replace) y asyncio.Lock
+    ├── views.py             # Interfaces interactivas (discord.ui.View) desacopladas
+    ├── duels.py             # EconomyDuelsMixin: combate 1v1, apuestas externas y liquidación
+    ├── events.py            # EconomyEventsMixin: loop periódico @tasks.loop y eventos aleatorios
+    └── cog.py               # Cog principal Economy (hereda mixins y expone comandos base)
+```
 
 ---
 
@@ -123,7 +141,7 @@ python la_creatura_bot.py
 | `%coin <cara\|cruz> <apuesta>` | `%moneda`, `%flip` | Apuesta al lanzamiento de una moneda. |
 | `%ruleta <color> <apuesta>` | `%roulette` | Apuesta en la ruleta callejera (rojo, negro o verde). |
 | `%duelo <@usuario> <apuesta>` | `%duel` | Desafía a un usuario a un duelo a muerte por almas. |
-| `%apostar <@combatiente> <monto>` | `%bet` | Apuesta en un duelo activo durante el tiempo de apuestas. |
+| `%bet <@combatiente> <monto>` | `%apostar` | Apuesta en un duelo activo durante el tiempo de apuestas. |
 | `%deadlock` | - | Lanza la señal de Deadlock con GIFs aleatorios. |
 | `%gif <búsqueda>` | - | Busca y envía un GIF animado mediante la API de Giphy. |
 
