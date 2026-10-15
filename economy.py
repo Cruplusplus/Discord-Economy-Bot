@@ -110,9 +110,19 @@ GIPHY_API_KEY: str = os.getenv("GIPHY_API_KEY", "")
 DATA_FILE_PATH: str = os.getenv("DATA_FILE_PATH", "stats.json")
 
 # --- Eventos Aleatorios y Automáticos de Ivy ---
-EVENT_CHECK_INTERVAL_MINUTES: int = _parse_int_env("EVENT_CHECK_INTERVAL_MINUTES", 20)
+EVENT_MIN_INTERVAL_MINUTES: int = _parse_int_env("EVENT_MIN_INTERVAL_MINUTES", 15)
+EVENT_MAX_INTERVAL_MINUTES: int = _parse_int_env("EVENT_MAX_INTERVAL_MINUTES", 30)
 EVENT_TRIGGER_CHANCE: float = _parse_float_env("EVENT_TRIGGER_CHANCE", 0.5)
 ECONOMY_CHANNEL_ID: int = _parse_int_env("ECONOMY_CHANNEL_ID", 0)
+
+# Probabilidades / Pesos de selección entre eventos
+# Robin Hood (5%) y Lluvia de Almas (5%); el 90% restante repartido en partes iguales (22.5% c/u)
+EVENT_WEIGHT_DROP: float = _parse_float_env("EVENT_WEIGHT_DROP", 22.5)
+EVENT_WEIGHT_TRIVIA: float = _parse_float_env("EVENT_WEIGHT_TRIVIA", 22.5)
+EVENT_WEIGHT_RAID: float = _parse_float_env("EVENT_WEIGHT_RAID", 22.5)
+EVENT_WEIGHT_ROULETTE: float = _parse_float_env("EVENT_WEIGHT_ROULETTE", 22.5)
+EVENT_WEIGHT_BOOST: float = _parse_float_env("EVENT_WEIGHT_BOOST", 5.0)
+EVENT_WEIGHT_ROBIN_HOOD: float = _parse_float_env("EVENT_WEIGHT_ROBIN_HOOD", 5.0)
 
 # Parámetros de eventos específicos
 DROP_MIN_SOULS: int = _parse_int_env("DROP_MIN_SOULS", 3000)
@@ -2077,10 +2087,23 @@ class Economy(commands.Cog):
         """Cancela el loop de eventos al descargar el Cog."""
         self.random_events_loop.cancel()
 
-    @tasks.loop(minutes=EVENT_CHECK_INTERVAL_MINUTES)
+    @tasks.loop(minutes=EVENT_MIN_INTERVAL_MINUTES)
     async def random_events_loop(self):
         """Loop periódico que evalúa y dispara eventos aleatorios en el canal configurado."""
         if not ECONOMY_CHANNEL_ID:
+            return
+
+        # 1. Recalcular un nuevo intervalo aleatorio e impredecible para el próximo ciclo
+        try:
+            min_m = max(1, min(EVENT_MIN_INTERVAL_MINUTES, EVENT_MAX_INTERVAL_MINUTES))
+            max_m = max(min_m, max(EVENT_MIN_INTERVAL_MINUTES, EVENT_MAX_INTERVAL_MINUTES))
+            nuevo_intervalo = random.randint(min_m, max_m)
+            self.random_events_loop.change_interval(minutes=nuevo_intervalo)
+        except Exception as e:
+            print(f"[IVY ECONOMY] Error al recalcular intervalo de eventos: {e}")
+
+        # 2. Evaluación de probabilidad de disparo para este ciclo
+        if EVENT_TRIGGER_CHANCE < 1.0 and random.random() > EVENT_TRIGGER_CHANCE:
             return
 
         if self.active_event:
@@ -2098,10 +2121,20 @@ class Economy(commands.Cog):
             self._trigger_trivia,
             self._trigger_raid,
             self._trigger_roulette,
+            self._trigger_boost,
             self._trigger_robin_hood,
         ]
 
-        evento_seleccionado = random.choice(eventos)
+        pesos = [
+            EVENT_WEIGHT_DROP,
+            EVENT_WEIGHT_TRIVIA,
+            EVENT_WEIGHT_RAID,
+            EVENT_WEIGHT_ROULETTE,
+            EVENT_WEIGHT_BOOST,
+            EVENT_WEIGHT_ROBIN_HOOD,
+        ]
+
+        evento_seleccionado = random.choices(eventos, weights=pesos, k=1)[0]
         try:
             self.active_event = True
             await evento_seleccionado(channel)
@@ -2278,6 +2311,25 @@ class Economy(commands.Cog):
         )
         view.message = msg
 
+    async def _boost_end_task(self, channel: discord.abc.Messageable, duration_seconds: int):
+        """Tarea en segundo plano que avisa cuando finaliza la bonificación de trabajo."""
+        await asyncio.sleep(duration_seconds)
+        self.work_boost_active = False
+
+        embed_end = discord.Embed(
+            title="🍂 La Lluvia de Almas ha Terminado",
+            description=(
+                f"El cielo de El Barrio vuelve a despejarse y las rondas de `%work` regresan a su paga habitual.\n"
+                f"¡Buen laburo a todos los que salieron a ganarse el pan hoy!"
+            ),
+            color=discord.Color.light_grey()
+        )
+        embed_end.set_footer(text="Carlos always says: rest is just as important as the hustle.")
+        try:
+            await channel.send(embed=embed_end)
+        except Exception:
+            pass
+
     async def _trigger_boost(self, channel: discord.abc.Messageable):
         """5. Lluvia de almas (Multiplicador temporal de trabajo)."""
         self.work_boost_active = True
@@ -2302,22 +2354,7 @@ class Economy(commands.Cog):
             allowed_mentions=discord.AllowedMentions(everyone=True)
         )
 
-        await asyncio.sleep(BOOST_DURATION_MINUTES * 60)
-        self.work_boost_active = False
-
-        embed_end = discord.Embed(
-            title="🍂 La Lluvia de Almas ha Terminado",
-            description=(
-                f"El cielo de El Barrio vuelve a despejarse y las rondas de `%work` regresan a su paga habitual.\n"
-                f"¡Buen laburo a todos los que salieron a ganarse el pan hoy!"
-            ),
-            color=discord.Color.light_grey()
-        )
-        embed_end.set_footer(text="Carlos always says: rest is just as important as the hustle.")
-        try:
-            await channel.send(embed=embed_end)
-        except Exception:
-            pass
+        asyncio.create_task(self._boost_end_task(channel, BOOST_DURATION_MINUTES * 60))
 
     async def _trigger_robin_hood(self, channel: discord.abc.Messageable):
         """6. Robin Hood (Impuesto a la gárgola millonaria)."""
@@ -2419,7 +2456,23 @@ class Economy(commands.Cog):
             await ctx.reply(f"🚀 Disparando evento `{tipo_clean}`...")
             await handler(ctx.channel)
         else:
-            handler = random.choice(list(tipos.values()))
+            eventos_test = [
+                self._trigger_soul_drop,
+                self._trigger_trivia,
+                self._trigger_raid,
+                self._trigger_roulette,
+                self._trigger_boost,
+                self._trigger_robin_hood,
+            ]
+            pesos_test = [
+                EVENT_WEIGHT_DROP,
+                EVENT_WEIGHT_TRIVIA,
+                EVENT_WEIGHT_RAID,
+                EVENT_WEIGHT_ROULETTE,
+                EVENT_WEIGHT_BOOST,
+                EVENT_WEIGHT_ROBIN_HOOD,
+            ]
+            handler = random.choices(eventos_test, weights=pesos_test, k=1)[0]
             await ctx.reply("🎲 Disparando un evento al azar para pruebas...")
             await handler(ctx.channel)
 
