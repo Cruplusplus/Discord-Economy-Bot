@@ -124,6 +124,20 @@ EVENT_WEIGHT_ROULETTE: float = _parse_float_env("EVENT_WEIGHT_ROULETTE", 22.5)
 EVENT_WEIGHT_BOOST: float = _parse_float_env("EVENT_WEIGHT_BOOST", 5.0)
 EVENT_WEIGHT_ROBIN_HOOD: float = _parse_float_env("EVENT_WEIGHT_ROBIN_HOOD", 5.0)
 
+# --- Sistema Anti-Abuso y Escalamiento por Inactividad del Líder ---
+MIN_RISK_BET_PERCENT: float = _parse_float_env("MIN_RISK_BET_PERCENT", 0.02)  # 2% de la fortuna total del líder
+MIN_RISK_BET_FLOOR: int = _parse_int_env("MIN_RISK_BET_FLOOR", 500)          # Piso mínimo de almas para validar riesgo
+
+# Escalamiento progresivo de probabilidad para Robin Hood según horas sin apostar
+INACTIVITY_STAGE_1_HOURS: int = _parse_int_env("INACTIVITY_STAGE_1_HOURS", 24)
+EVENT_WEIGHT_ROBIN_HOOD_STAGE_1: float = _parse_float_env("EVENT_WEIGHT_ROBIN_HOOD_STAGE_1", 15.0)
+
+INACTIVITY_STAGE_2_HOURS: int = _parse_int_env("INACTIVITY_STAGE_2_HOURS", 48)
+EVENT_WEIGHT_ROBIN_HOOD_STAGE_2: float = _parse_float_env("EVENT_WEIGHT_ROBIN_HOOD_STAGE_2", 30.0)
+
+INACTIVITY_STAGE_3_HOURS: int = _parse_int_env("INACTIVITY_STAGE_3_HOURS", 72)
+EVENT_WEIGHT_ROBIN_HOOD_STAGE_3: float = _parse_float_env("EVENT_WEIGHT_ROBIN_HOOD_STAGE_3", 50.0)
+
 # Parámetros de eventos específicos
 DROP_MIN_SOULS: int = _parse_int_env("DROP_MIN_SOULS", 3000)
 DROP_MAX_SOULS: int = _parse_int_env("DROP_MAX_SOULS", 10000)
@@ -353,6 +367,7 @@ class DataManager:
             "last_work": 0.0,
             "last_rob": 0.0,
             "prison_until": 0.0,
+            "last_gamble": time.time(),
             "stats": {
                 "times_worked": 0,
                 "times_robbed": 0,
@@ -844,24 +859,11 @@ class Economy(commands.Cog):
             except Exception:
                 pass
 
-    async def actualizar_rol_millonario(
-        self,
-        guild: Optional[discord.Guild],
-        announce_channel: Optional[discord.abc.Messageable] = None
-    ) -> Optional[discord.Member]:
-        """
-        Determina automáticamente quién es el usuario con más patrimonio total (mano + banco)
-        en el servidor y le transfiere el rol exclusivo de Millonario/Magnate si hubo un cambio.
-        """
+    async def _get_top_wealthy_member(self, guild: Optional[discord.Guild]) -> Tuple[Optional[discord.Member], int]:
+        """Encuentra al miembro no-bot con mayor fortuna total (wallet + bank) dentro del servidor."""
         if guild is None:
-            return None
+            return None, 0
 
-        # 1. Obtener el rol configurado
-        role = self._get_richest_role(guild)
-        if role is None:
-            return None
-
-        # 2. Determinar quién es el usuario con mayor fortuna en stats.json dentro del servidor
         async with self.db.lock:
             all_users = self.db.get_all_users()
 
@@ -891,6 +893,67 @@ class Economy(commands.Cog):
             if total > max_wealth:
                 max_wealth = total
                 best_member = member
+
+        return best_member, max(0, max_wealth)
+
+    async def _registrar_actividad_riesgo(
+        self,
+        user_id: int,
+        bet_amount: int,
+        guild: Optional[discord.Guild]
+    ) -> Tuple[bool, bool, int]:
+        """
+        Registra la actividad de apuesta para el usuario.
+        Si el usuario es el Más Millonario (#1 del ranking), verifica si la apuesta cumple
+        el umbral mínimo de riesgo (max(MIN_RISK_BET_FLOOR, 2% de su fortuna total)).
+        Retorna:
+            (es_el_millonario, apuesta_valida_para_resetear, apuesta_minima_requerida)
+        """
+        if guild is None:
+            return False, True, 0
+
+        top_member, top_total = await self._get_top_wealthy_member(guild)
+        is_richest = (top_member is not None and top_member.id == user_id and top_total > 0)
+
+        async with self.db.lock:
+            user_data = self.db.get_user_data(user_id)
+            user_total = user_data.get("wallet", 0) + user_data.get("bank", 0)
+
+            if not is_richest:
+                user_data["last_gamble"] = time.time()
+                await self.db.save()
+                return False, True, 0
+
+            # Es el Más Millonario: calcular la apuesta mínima requerida (Skin in the game)
+            required_bet = max(MIN_RISK_BET_FLOOR, int(round(user_total * MIN_RISK_BET_PERCENT)))
+
+            if bet_amount >= required_bet:
+                user_data["last_gamble"] = time.time()
+                await self.db.save()
+                return True, True, required_bet
+            else:
+                # Apuesta de polvo insuficiente: no resetea su reloj de inactividad
+                return True, False, required_bet
+
+    async def actualizar_rol_millonario(
+        self,
+        guild: Optional[discord.Guild],
+        announce_channel: Optional[discord.abc.Messageable] = None
+    ) -> Optional[discord.Member]:
+        """
+        Determina automáticamente quién es el usuario con más patrimonio total (mano + banco)
+        en el servidor y le transfiere el rol exclusivo de Millonario/Magnate si hubo un cambio.
+        """
+        if guild is None:
+            return None
+
+        # 1. Obtener el rol configurado
+        role = self._get_richest_role(guild)
+        if role is None:
+            return None
+
+        # 2. Determinar quién es el usuario con mayor fortuna en stats.json dentro del servidor
+        best_member, max_wealth = await self._get_top_wealthy_member(guild)
 
         if best_member is None:
             return None
@@ -930,6 +993,12 @@ class Economy(commands.Cog):
                 cached_best = guild.get_member(best_member.id)
                 self._safe_add_cached_role(cached_best, role.id)
                 self._safe_add_cached_role(best_member, role.id)
+
+                # Otorgar gracia de 24 horas al nuevo líder para que no herede inactividad previa
+                async with self.db.lock:
+                    new_leader_data = self.db.get_user_data(best_member.id)
+                    new_leader_data["last_gamble"] = time.time()
+                    await self.db.save()
             except discord.Forbidden:
                 print(f"[IVY ECONOMY] Sin permisos de jerarquía para asignar el rol '{role.name}' a {best_member.display_name}. Coloca el rol del bot por encima de '{role.name}'.")
                 return best_member
@@ -1120,6 +1189,13 @@ class Economy(commands.Cog):
                 )
                 embed.set_footer(text="I always get a little nervous before taking big risks...")
 
+        # Registrar actividad de riesgo para el temporizador de Robin Hood
+        is_richest, is_valid_reset, req_bet = await self._registrar_actividad_riesgo(user_id, parsed_amount, ctx.guild)
+        if is_richest and not is_valid_reset:
+            embed.set_footer(
+                text=f"⚠️ [Magnate] Apuesta insuficiente para resetear inactividad. Mínimo: {req_bet:,} {CURRENCY_SYMBOL} ({int(MIN_RISK_BET_PERCENT * 100)}% de tu fortuna)."
+            )
+
         await ctx.reply(embed=embed)
         await self.actualizar_rol_millonario(ctx.guild, announce_channel=ctx.channel)
 
@@ -1210,6 +1286,13 @@ class Economy(commands.Cog):
                     color=discord.Color.red()
                 )
                 embed.set_footer(text="Sometimes you have to make your own opportunities...")
+
+        # Registrar actividad de riesgo para el temporizador de Robin Hood
+        is_richest, is_valid_reset, req_bet = await self._registrar_actividad_riesgo(user_id, parsed_amount, ctx.guild)
+        if is_richest and not is_valid_reset:
+            embed.set_footer(
+                text=f"⚠️ [Magnate] Apuesta insuficiente para resetear inactividad. Mínimo: {req_bet:,} {CURRENCY_SYMBOL} ({int(MIN_RISK_BET_PERCENT * 100)}% de tu fortuna)."
+            )
 
         await ctx.reply(embed=embed)
         await self.actualizar_rol_millonario(ctx.guild, announce_channel=ctx.channel)
@@ -1678,8 +1761,15 @@ class Economy(commands.Cog):
 
             crown = " 👑" if is_richest else ""
             tag = f" `[{role.name}]`" if (is_richest and role) else ""
+            inactivity_tag = ""
+            if is_richest and total >= ROBIN_HOOD_MIN_WALLET:
+                last_g = data.get("last_gamble", time.time())
+                idle_h = max(0.0, (time.time() - last_g) / 3600.0)
+                if idle_h >= INACTIVITY_STAGE_1_HOURS:
+                    inactivity_tag = f" *(⚠️ Inactivo {int(idle_h)}h)*"
+
             medal = "🥇" if rank_num == 1 else "🥈" if rank_num == 2 else "🥉" if rank_num == 3 else f"**#{rank_num}**"
-            lines.append(f"{medal}{crown} **{name}**{tag}: {total:,} {CURRENCY_SYMBOL} *(Mano: {data.get('wallet', 0):,} | Cornisa: {data.get('bank', 0):,})*")
+            lines.append(f"{medal}{crown} **{name}**{tag}{inactivity_tag}: {total:,} {CURRENCY_SYMBOL} *(Mano: {data.get('wallet', 0):,} | Cornisa: {data.get('bank', 0):,})*")
             rank_num += 1
 
         embed.description = (
@@ -1822,6 +1912,10 @@ class Economy(commands.Cog):
                 attacker_data["wallet"] -= stake
                 enemy_data["wallet"] -= stake
                 await self.db.save()
+
+            # Registrar actividad de riesgo para ambos combatientes
+            await self._registrar_actividad_riesgo(ctx.author.id, stake, ctx.guild)
+            await self._registrar_actividad_riesgo(member.id, stake, ctx.guild)
 
             self.pending_challenges.discard(guild_id)
 
@@ -2071,7 +2165,13 @@ class Economy(commands.Cog):
             ),
             color=discord.Color.teal()
         )
-        embed_bet.set_footer(text="Spanish Harlem nunca olvida a los que arriesgan.")
+        # Registrar actividad de riesgo para el apostador
+        is_richest, is_valid_reset, req_bet = await self._registrar_actividad_riesgo(ctx.author.id, amount, ctx.guild)
+        if is_richest and not is_valid_reset:
+            embed_bet.set_footer(
+                text=f"⚠️ [Magnate] Apuesta insuficiente para resetear inactividad. Mínimo: {req_bet:,} {CURRENCY_SYMBOL} ({int(MIN_RISK_BET_PERCENT * 100)}% de tu fortuna)."
+            )
+
         await ctx.reply(embed=embed_bet)
 
     # --------------------------------------------------------------------------
@@ -2116,6 +2216,32 @@ class Economy(commands.Cog):
             except Exception:
                 return
 
+        # 3. Calcular peso dinámico de Robin Hood según la inactividad del Más Millonario
+        guild = getattr(channel, "guild", None)
+        robin_weight = EVENT_WEIGHT_ROBIN_HOOD
+        if guild:
+            richest_member, richest_total = await self._get_top_wealthy_member(guild)
+            if richest_member and richest_total >= ROBIN_HOOD_MIN_WALLET:
+                async with self.db.lock:
+                    user_data = self.db.get_user_data(richest_member.id)
+                    last_gamble = user_data.get("last_gamble", time.time())
+
+                idle_hours = max(0.0, (time.time() - last_gamble) / 3600.0)
+
+                if idle_hours >= INACTIVITY_STAGE_3_HOURS:
+                    robin_weight = EVENT_WEIGHT_ROBIN_HOOD_STAGE_3
+                elif idle_hours >= INACTIVITY_STAGE_2_HOURS:
+                    robin_weight = EVENT_WEIGHT_ROBIN_HOOD_STAGE_2
+                elif idle_hours >= INACTIVITY_STAGE_1_HOURS:
+                    robin_weight = EVENT_WEIGHT_ROBIN_HOOD_STAGE_1
+                else:
+                    robin_weight = EVENT_WEIGHT_ROBIN_HOOD
+
+        # Distribuir el restante equitativamente entre los otros 4 eventos manteniendo Boost en su peso
+        boost_weight = EVENT_WEIGHT_BOOST
+        remaining_pool = max(0.0, 100.0 - robin_weight - boost_weight)
+        other_event_weight = remaining_pool / 4.0
+
         eventos = [
             self._trigger_soul_drop,
             self._trigger_trivia,
@@ -2126,12 +2252,12 @@ class Economy(commands.Cog):
         ]
 
         pesos = [
-            EVENT_WEIGHT_DROP,
-            EVENT_WEIGHT_TRIVIA,
-            EVENT_WEIGHT_RAID,
-            EVENT_WEIGHT_ROULETTE,
-            EVENT_WEIGHT_BOOST,
-            EVENT_WEIGHT_ROBIN_HOOD,
+            other_event_weight,
+            other_event_weight,
+            other_event_weight,
+            other_event_weight,
+            boost_weight,
+            robin_weight,
         ]
 
         evento_seleccionado = random.choices(eventos, weights=pesos, k=1)[0]
@@ -2407,13 +2533,22 @@ class Economy(commands.Cog):
 
             await self.db.save()
 
+        idle_hours = max(0.0, (time.time() - richest_data.get("last_gamble", time.time())) / 3600.0)
+        motivo_inactividad = ""
+        if idle_hours >= INACTIVITY_STAGE_1_HOURS:
+            motivo_inactividad = (
+                f"\n⚠️ **Causa del ataque:** ¡El magnate lleva **{int(idle_hours)} horas** sin arriesgar almas en la calle!\n"
+                f"*«Carlos always says: las almas estancadas crían moho y atraen a los amigos de lo ajeno.»*\n"
+            )
+
         deadline = int(time.time() + DROP_TIMEOUT_SECONDS)
         view = RobinHoodView(self, richest_member, stolen_amount)
         embed = discord.Embed(
             title="🏹 ¡IMPUESTO A LA OPULENCIA: ROBIN HOOD CALLEJERO!",
             description=(
                 f"Ivy se coló silenciosa como gárgola en las propiedades de **{richest_member.mention}** y le sustrajo un **{int(ROBIN_HOOD_STEAL_PERCENTAGE * 100)}%** "
-                f"de su fortuna {origen_robo} por andar acaparando almas.\n\n"
+                f"de su fortuna {origen_robo} por andar acaparando almas.\n"
+                f"{motivo_inactividad}\n"
                 f"💰 **Bolsa redistribuida:** **{stolen_amount:,} {CURRENCY_NAME} {CURRENCY_SYMBOL}**\n"
                 f"🚫 **Restricción:** {richest_member.mention} no puede recoger su propia bolsa.\n"
                 f"⏳ **Tiempo para agarrarla:** <t:{deadline}:R>\n\n"
