@@ -107,6 +107,8 @@ ivy_tags = ["ivy", "deadlock"]
 deadlock_counter = int(0)
 shutdown_started = False
 
+
+
 # ===============fx====================
 
 async def obtener_gif(tags=None) -> str | None:
@@ -189,6 +191,8 @@ async def on_ready():
                 print(f"No se pudo enviar aviso de inicio al canal {ivy_online_channel}: {e}")
         else:
             print(f"Canal de inicio ({ivy_online_channel}) no encontrado en caché")
+
+    await bot.change_presence(activity=discord.Game(name="Deadlock"))
 
 
 async def shutdown_bot():
