@@ -27,6 +27,10 @@ prefijo = os.getenv("BOT_PREFIX", "%")
 
 bot = commands.Bot(command_prefix=prefijo, intents=intents)
 
+# Administrador de consola interactiva CLI
+from console import ConsoleManager
+console_manager = ConsoleManager(bot)
+
 # CONST
 discord_api_key = os.getenv("DISCORD_TOKEN")
 giphy_api_key = os.getenv("GIPHY_API_KEY", "")
@@ -173,6 +177,9 @@ bot.setup_hook = setup_hook
 @bot.event
 async def on_ready():
     print(f"Bot conectado como {bot.user} (ID: {bot.user.id})")
+    if not console_manager.is_running:
+        console_manager.start()
+
     if ivy_online_channel > 0:
         canal = bot.get_channel(ivy_online_channel)
         if canal is not None:
@@ -190,6 +197,7 @@ async def shutdown_bot():
         return
 
     shutdown_started = True
+    console_manager.stop()
     if ivy_online_channel > 0:
         canal = bot.get_channel(ivy_online_channel)
         if canal is not None:
