@@ -192,7 +192,12 @@ async def on_ready():
         else:
             print(f"Canal de inicio ({ivy_online_channel}) no encontrado en caché")
 
-    await bot.change_presence(activity=discord.Game(name="Deadlock"))
+    await bot.change_presence(activity=discord.Activity(
+        type=discord.ActivityType.playing,
+        name="Deadlock",
+        details="Wishing the Arroyos were In console.py",
+        state="Wishing the Arroyos were In console.py"
+    ))   
 
 
 async def shutdown_bot():
