@@ -73,6 +73,8 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         self.work_boost_active: bool = False
         self.work_boost_until: float = 0.0
         self.active_event: bool = False
+        self._top_leader_cache: Dict[int, Tuple[int, int]] = {}
+        self._not_in_guild_cache: Dict[int, set[int]] = {}
 
     # --------------------------------------------------------------------------
     #                         METODOS AUXILIARES
@@ -195,16 +197,15 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 pass
 
     async def _get_top_wealthy_member(self, guild: Optional[discord.Guild]) -> Tuple[Optional[discord.Member], int]:
-        """Encuentra al miembro no-bot con mayor fortuna total (wallet + bank) dentro del servidor."""
+        """Encuentra al miembro no-bot con mayor fortuna total (wallet + bank) dentro del servidor de forma optimizada."""
         if guild is None:
             return None, 0
 
         async with self.db.lock:
             all_users = self.db.get_all_users()
 
-        best_member: Optional[discord.Member] = None
-        max_wealth: int = -1
-
+        # Filtrar y ordenar candidatos por patrimonio total descendente
+        candidates = []
         for uid_str, data in all_users.items():
             try:
                 user_id = int(uid_str)
@@ -212,24 +213,60 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 continue
 
             total = data.get("wallet", 0) + data.get("bank", 0)
-            if total <= 0:
+            if total > 0:
+                candidates.append((user_id, total))
+
+        candidates.sort(key=lambda x: x[1], reverse=True)
+
+        not_in_guild = self._not_in_guild_cache.setdefault(guild.id, set())
+
+        for user_id, total in candidates:
+            if user_id in not_in_guild:
                 continue
 
             member = guild.get_member(user_id)
             if member is None:
                 try:
                     member = await guild.fetch_member(user_id)
-                except (discord.NotFound, discord.HTTPException):
+                except discord.NotFound:
+                    not_in_guild.add(user_id)
+                    member = None
+                except discord.HTTPException:
                     member = None
 
-            if member is None or member.bot:
-                continue
+            if member is not None and not member.bot:
+                # Early Exit O(1): al estar ordenados descendente, el primero valido es indiscutiblemente el lider
+                self._top_leader_cache[guild.id] = (member.id, total)
+                return member, total
 
-            if total > max_wealth:
-                max_wealth = total
-                best_member = member
+        self._top_leader_cache[guild.id] = (0, 0)
+        return None, 0
 
-        return best_member, max(0, max_wealth)
+    def _evaluar_riesgo_apostador(
+        self,
+        user_id: int,
+        bet_amount: int,
+        user_total: int,
+        guild: Optional[discord.Guild]
+    ) -> Tuple[bool, bool, int]:
+        """
+        Evalua en memoria (0 llamadas de red) si una apuesta resetea el reloj de inactividad
+        del apostador, aplicando la regla de riesgo para el Mas Millonario.
+        Retorna:
+            (es_el_millonario, apuesta_valida_para_resetear, apuesta_minima_requerida)
+        """
+        if guild is None:
+            return False, True, 0
+
+        cached_leader_id, cached_wealth = self._top_leader_cache.get(guild.id, (0, 0))
+        is_richest = (cached_leader_id == user_id and user_total > 0)
+
+        if not is_richest:
+            return False, True, 0
+
+        required_bet = max(MIN_RISK_BET_FLOOR, int(round(user_total * MIN_RISK_BET_PERCENT)))
+        is_valid = (bet_amount >= required_bet)
+        return True, is_valid, required_bet
 
     async def _registrar_actividad_riesgo(
         self,
@@ -239,27 +276,31 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
     ) -> Tuple[bool, bool, int]:
         """
         Registra la actividad de apuesta para el usuario.
-        Si el usuario es el Más Millonario (#1 del ranking), verifica si la apuesta cumple
-        el umbral mínimo de riesgo (max(MIN_RISK_BET_FLOOR, 2% de su fortuna total)).
-        Retorna:
-            (es_el_millonario, apuesta_valida_para_resetear, apuesta_minima_requerida)
+        Aprovecha la cache en memoria y solo guarda en disco si hubo cambio.
         """
         if guild is None:
             return False, True, 0
 
-        top_member, top_total = await self._get_top_wealthy_member(guild)
-        is_richest = (top_member is not None and top_member.id == user_id and top_total > 0)
+        if guild.id not in self._top_leader_cache:
+            await self._get_top_wealthy_member(guild)
 
         async with self.db.lock:
             user_data = self.db.get_user_data(user_id)
             user_total = user_data.get("wallet", 0) + user_data.get("bank", 0)
+
+            cached_leader_id, cached_wealth = self._top_leader_cache.get(guild.id, (0, 0))
+            if cached_leader_id != user_id and user_total > cached_wealth and user_total > 0:
+                top_member, top_total = await self._get_top_wealthy_member(guild)
+                is_richest = (top_member is not None and top_member.id == user_id and top_total > 0)
+            else:
+                is_richest = (cached_leader_id == user_id and user_total > 0)
 
             if not is_richest:
                 user_data["last_gamble"] = time.time()
                 await self.db.save()
                 return False, True, 0
 
-            # Es el Más Millonario: calcular la apuesta mínima requerida (Skin in the game)
+            # Es el Mas Millonario: calcular la apuesta minima requerida (Skin in the game)
             required_bet = max(MIN_RISK_BET_FLOOR, int(round(user_total * MIN_RISK_BET_PERCENT)))
 
             if bet_amount >= required_bet:
@@ -267,7 +308,6 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 await self.db.save()
                 return True, True, required_bet
             else:
-                # Apuesta de polvo insuficiente: no resetea su reloj de inactividad
                 return True, False, required_bet
 
     async def actualizar_rol_millonario(
@@ -292,6 +332,9 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
 
         if best_member is None:
             return None
+
+        # Asegurar actualización de la caché del líder
+        self._top_leader_cache[guild.id] = (best_member.id, max_wealth)
 
         # 3. Verificar los portadores actuales del rol
         current_holders = [m for m in role.members]
@@ -352,6 +395,20 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 await self.actualizar_rol_millonario(guild)
             except Exception as e:
                 print(f"[IVY ECONOMY] Error sincronizando rol de millonario en {guild.name}: {e}")
+
+    @commands.Cog.listener()
+    async def on_member_remove(self, member: discord.Member):
+        """Si un miembro abandona el servidor, agregarlo a no-miembros e invalidar líder si lo era."""
+        guild = member.guild
+        self._not_in_guild_cache.setdefault(guild.id, set()).add(member.id)
+        cached_id, _ = self._top_leader_cache.get(guild.id, (0, 0))
+        if cached_id == member.id:
+            self._top_leader_cache.pop(guild.id, None)
+
+    @commands.Cog.listener()
+    async def on_member_join(self, member: discord.Member):
+        """Si un miembro se une al servidor, quitarlo del conjunto de no-miembros."""
+        self._not_in_guild_cache.setdefault(member.guild.id, set()).discard(member.id)
 
     # --------------------------------------------------------------------------
     #                       COMANDO: WORK / TRABAJAR
@@ -422,7 +479,12 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         )
         embed.set_footer(text=f"Ivy te espera para la próxima ronda en {WORK_COOLDOWN // 60} minutos.")
         await ctx.reply(embed=embed)
-        await self.actualizar_rol_millonario(ctx.guild, announce_channel=ctx.channel)
+
+        if ctx.guild:
+            leader_id, leader_wealth = self._top_leader_cache.get(ctx.guild.id, (0, 0))
+            user_total = user["wallet"] + user["bank"]
+            if user_id == leader_id or user_total >= leader_wealth:
+                await self.actualizar_rol_millonario(ctx.guild, announce_channel=ctx.channel)
 
     # --------------------------------------------------------------------------
     #                    COMANDO: COIN / CARA O CRUZ
@@ -469,7 +531,6 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 ganancia = int(parsed_amount * (COIN_MULTIPLIER - 1.0))
                 user["wallet"] += ganancia
                 user["stats"]["gambles_won"] = user["stats"].get("gambles_won", 0) + 1
-                await self.db.save()
 
                 quote = random.choice(IVY_COIN_WIN_QUOTES).format(face=resultado.upper())
                 embed = discord.Embed(
@@ -483,7 +544,6 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             else:
                 user["wallet"] -= parsed_amount
                 user["stats"]["gambles_lost"] = user["stats"].get("gambles_lost", 0) + 1
-                await self.db.save()
 
                 quote = random.choice(IVY_COIN_LOSS_QUOTES).format(face=resultado.upper())
                 embed = discord.Embed(
@@ -495,15 +555,27 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 )
                 embed.set_footer(text="I always get a little nervous before taking big risks...")
 
-        # Registrar actividad de riesgo para el temporizador de Robin Hood
-        is_richest, is_valid_reset, req_bet = await self._registrar_actividad_riesgo(user_id, parsed_amount, ctx.guild)
+            # Evaluar y registrar actividad de riesgo en la misma transaccion atomica
+            user_total = user["wallet"] + user["bank"]
+            is_richest, is_valid_reset, req_bet = self._evaluar_riesgo_apostador(
+                user_id, parsed_amount, user_total, ctx.guild
+            )
+            if not is_richest or is_valid_reset:
+                user["last_gamble"] = time.time()
+
+            await self.db.save()
+
         if is_richest and not is_valid_reset:
             embed.set_footer(
                 text=f"⚠️ [Magnate] Apuesta insuficiente para resetear inactividad. Mínimo: {req_bet:,} {CURRENCY_SYMBOL} ({int(MIN_RISK_BET_PERCENT * 100)}% de tu fortuna)."
             )
 
         await ctx.reply(embed=embed)
-        await self.actualizar_rol_millonario(ctx.guild, announce_channel=ctx.channel)
+
+        if ctx.guild:
+            leader_id, leader_wealth = self._top_leader_cache.get(ctx.guild.id, (0, 0))
+            if user_id == leader_id or user_total >= leader_wealth:
+                await self.actualizar_rol_millonario(ctx.guild, announce_channel=ctx.channel)
 
     # --------------------------------------------------------------------------
     #                       COMANDO: RULETA (ROULETTE)
@@ -559,7 +631,6 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 ganancia = int(parsed_amount * (multiplicador - 1.0))
                 user["wallet"] += ganancia
                 user["stats"]["gambles_won"] = user["stats"].get("gambles_won", 0) + 1
-                await self.db.save()
 
                 if resultado == "verde":
                     quote = random.choice(IVY_RULETA_WIN_VERDE_QUOTES).format(multiplicador=multiplicador)
@@ -579,7 +650,6 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             else:
                 user["wallet"] -= parsed_amount
                 user["stats"]["gambles_lost"] = user["stats"].get("gambles_lost", 0) + 1
-                await self.db.save()
 
                 quote = random.choice(IVY_RULETA_LOSS_QUOTES).format(
                     emoji=color_emoji, color=resultado.upper()
@@ -593,15 +663,27 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 )
                 embed.set_footer(text="Sometimes you have to make your own opportunities...")
 
-        # Registrar actividad de riesgo para el temporizador de Robin Hood
-        is_richest, is_valid_reset, req_bet = await self._registrar_actividad_riesgo(user_id, parsed_amount, ctx.guild)
+            # Evaluar y registrar actividad de riesgo en la misma transaccion atomica
+            user_total = user["wallet"] + user["bank"]
+            is_richest, is_valid_reset, req_bet = self._evaluar_riesgo_apostador(
+                user_id, parsed_amount, user_total, ctx.guild
+            )
+            if not is_richest or is_valid_reset:
+                user["last_gamble"] = time.time()
+
+            await self.db.save()
+
         if is_richest and not is_valid_reset:
             embed.set_footer(
                 text=f"⚠️ [Magnate] Apuesta insuficiente para resetear inactividad. Mínimo: {req_bet:,} {CURRENCY_SYMBOL} ({int(MIN_RISK_BET_PERCENT * 100)}% de tu fortuna)."
             )
 
         await ctx.reply(embed=embed)
-        await self.actualizar_rol_millonario(ctx.guild, announce_channel=ctx.channel)
+
+        if ctx.guild:
+            leader_id, leader_wealth = self._top_leader_cache.get(ctx.guild.id, (0, 0))
+            if user_id == leader_id or user_total >= leader_wealth:
+                await self.actualizar_rol_millonario(ctx.guild, announce_channel=ctx.channel)
 
     # --------------------------------------------------------------------------
     #                   COMANDOS DE BANCO: DEPOSIT Y WITHDRAW
@@ -873,7 +955,11 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 embed.set_footer(text=f"💡 Consejo para la víctima: ¡Resguárdate en la cornisa con '{ctx.prefix}deposit'!")
 
         await ctx.reply(embed=embed)
-        await self.actualizar_rol_millonario(ctx.guild, announce_channel=ctx.channel)
+        if ctx.guild:
+            leader_id, leader_wealth = self._top_leader_cache.get(ctx.guild.id, (0, 0))
+            robber_total = robber["wallet"] + robber["bank"]
+            if user_id == leader_id or victim.id == leader_id or robber_total >= leader_wealth:
+                await self.actualizar_rol_millonario(ctx.guild, announce_channel=ctx.channel)
 
     # --------------------------------------------------------------------------
     #                         COMANDO: PAY / PAGAR
@@ -927,7 +1013,12 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         embed.add_field(name=f"Bolsillo de {receiver.display_name}", value=f"{receiver_data['wallet']:,} {CURRENCY_SYMBOL}", inline=True)
         embed.set_footer(text="Now that's what I call teamwork!")
         await ctx.reply(embed=embed)
-        await self.actualizar_rol_millonario(ctx.guild, announce_channel=ctx.channel)
+        if ctx.guild:
+            leader_id, leader_wealth = self._top_leader_cache.get(ctx.guild.id, (0, 0))
+            sender_total = sender["wallet"] + sender["bank"]
+            receiver_total = receiver_data["wallet"] + receiver_data["bank"]
+            if sender_id == leader_id or receiver_total >= leader_wealth:
+                await self.actualizar_rol_millonario(ctx.guild, announce_channel=ctx.channel)
 
     # --------------------------------------------------------------------------
     #                     COMANDOS EXTRA: BALANCE, JAIL, TOP
