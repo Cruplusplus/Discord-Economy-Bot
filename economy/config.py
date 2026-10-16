@@ -126,24 +126,24 @@ INACTIVITY_STAGE_3_HOURS: int = _parse_int_env("INACTIVITY_STAGE_3_HOURS", 72)
 EVENT_WEIGHT_ROBIN_HOOD_STAGE_3: float = _parse_float_env("EVENT_WEIGHT_ROBIN_HOOD_STAGE_3", 50.0)
 
 # Parametros de eventos especificos
-DROP_MIN_SOULS: int = _parse_int_env("DROP_MIN_SOULS", 3000)
-DROP_MAX_SOULS: int = _parse_int_env("DROP_MAX_SOULS", 10000)
+DROP_MIN_SOULS: int = _parse_int_env("DROP_MIN_SOULS", 10000)
+DROP_MAX_SOULS: int = _parse_int_env("DROP_MAX_SOULS", 20000)
 DROP_TIMEOUT_SECONDS: int = _parse_int_env("DROP_TIMEOUT_SECONDS", 120)
 
 TRIVIA_TIMEOUT_SECONDS: int = _parse_int_env("TRIVIA_TIMEOUT_SECONDS", 60)
-TRIVIA_REWARD_MIN: int = _parse_int_env("TRIVIA_REWARD_MIN", 2000)
-TRIVIA_REWARD_MAX: int = _parse_int_env("TRIVIA_REWARD_MAX", 5000)
+TRIVIA_REWARD_MIN: int = _parse_int_env("TRIVIA_REWARD_MIN", 9000)
+TRIVIA_REWARD_MAX: int = _parse_int_env("TRIVIA_REWARD_MAX", 15000)
 
 RAID_HP: int = _parse_int_env("RAID_HP", 5)
 RAID_TIMEOUT_SECONDS: int = _parse_int_env("RAID_TIMEOUT_SECONDS", 60)
-RAID_TOTAL_POOL: int = _parse_int_env("RAID_TOTAL_POOL", 15000)
+RAID_TOTAL_POOL: int = _parse_int_env("RAID_TOTAL_POOL", 40000)
 
 ROULETTE_RISK_WIN_CHANCE: float = _parse_float_env("ROULETTE_RISK_WIN_CHANCE", 0.70)
-ROULETTE_WIN_AMOUNT: int = _parse_int_env("ROULETTE_WIN_AMOUNT", 8000)
+ROULETTE_WIN_AMOUNT: int = _parse_int_env("ROULETTE_WIN_AMOUNT", 15000)
 ROULETTE_PRISON_DURATION: int = _parse_int_env("ROULETTE_PRISON_DURATION", 900)
 
 BOOST_DURATION_MINUTES: int = _parse_int_env("BOOST_DURATION_MINUTES", 20)
-BOOST_MULTIPLIER: float = _parse_float_env("BOOST_MULTIPLIER", 10.0)
+BOOST_MULTIPLIER: float = _parse_float_env("BOOST_MULTIPLIER", 12.0)
 
 ROBIN_HOOD_STEAL_PERCENTAGE: float = _parse_float_env("ROBIN_HOOD_STEAL_PERCENTAGE", 0.03)
 ROBIN_HOOD_MIN_WALLET: int = _parse_int_env("ROBIN_HOOD_MIN_WALLET", 10000)
