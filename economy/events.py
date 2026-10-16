@@ -48,6 +48,9 @@ from .config import (
     ROBIN_HOOD_MIN_WALLET,
     CURRENCY_NAME,
     CURRENCY_SYMBOL,
+    RICHEST_ANNOUNCE_CHANNEL_ID,
+    RICHEST_DAILY_ANNOUNCE_TIME,
+    RICHEST_ROLE_NAME,
 )
 
 
@@ -59,21 +62,33 @@ class EconomyEventsMixin:
     # --------------------------------------------------------------------------
 
     async def cog_load(self):
-        """Inicia el loop de eventos periódicos al cargar el Cog."""
+        """Inicia los loops periódicos al cargar el Cog."""
         if not self.random_events_loop.is_running():
             self.random_events_loop.start()
+        if not self.daily_richest_announcement_loop.is_running():
+            self.daily_richest_announcement_loop.start()
         try:
             await super().cog_load()
         except AttributeError:
             pass
 
     async def cog_unload(self):
-        """Cancela el loop de eventos al descargar el Cog."""
+        """Cancela los loops periódicos al descargar el Cog."""
         self.random_events_loop.cancel()
+        self.daily_richest_announcement_loop.cancel()
         try:
             await super().cog_unload()
         except AttributeError:
             pass
+
+    @tasks.loop(time=RICHEST_DAILY_ANNOUNCE_TIME)
+    async def daily_richest_announcement_loop(self):
+        """Loop diario que publica el reporte del Más Millonario a la hora configurada."""
+        await self._trigger_daily_richest_announcement()
+
+    @daily_richest_announcement_loop.before_loop
+    async def before_daily_richest_announcement_loop(self):
+        await self.bot.wait_until_ready()
 
     @tasks.loop(minutes=EVENT_MIN_INTERVAL_MINUTES)
     async def random_events_loop(self):
@@ -453,6 +468,83 @@ class EconomyEventsMixin:
         )
         view.message = msg
 
+    # --- Anuncio diario del Más Millonario ---
+
+    async def _trigger_daily_richest_announcement(self, specific_channel: Optional[discord.abc.Messageable] = None):
+        """Publica el reporte diario del Más Millonario en el canal establecido."""
+        if specific_channel:
+            guild = getattr(specific_channel, "guild", None)
+            if guild:
+                await self._enviar_boletin_millonario(guild, specific_channel)
+            return
+
+        if not RICHEST_ANNOUNCE_CHANNEL_ID:
+            return
+
+        for guild in self.bot.guilds:
+            channel = guild.get_channel(RICHEST_ANNOUNCE_CHANNEL_ID)
+            if channel is None:
+                try:
+                    channel = await self.bot.fetch_channel(RICHEST_ANNOUNCE_CHANNEL_ID)
+                except Exception:
+                    channel = None
+
+            if channel is not None:
+                await self._enviar_boletin_millonario(guild, channel)
+
+    async def _enviar_boletin_millonario(self, guild: discord.Guild, channel: discord.abc.Messageable):
+        """Envía el embed diario con la voz de Ivy resumiendo quién es el Más Millonario."""
+        role = self._get_richest_role(guild)
+        role_name = role.name if role else RICHEST_ROLE_NAME
+
+        best_member, max_wealth = await self._get_top_wealthy_member(guild)
+        if best_member is None or max_wealth <= 0:
+            return
+
+        # Sincronizar el rol por si acaso no lo tenía asignado
+        await self.actualizar_rol_millonario(guild)
+
+        async with self.db.lock:
+            user_data = self.db.get_user_data(best_member.id)
+            wallet = user_data.get("wallet", 0)
+            bank = user_data.get("bank", 0)
+            last_gamble = user_data.get("last_gamble", time.time())
+
+        idle_hours = max(0.0, (time.time() - last_gamble) / 3600.0)
+
+        desc = (
+            f"¡Atención a todos los vecinos de Spanish Harlem! Pasamos revista diaria a las cornisas y el amo indiscutido "
+            f"de las almas hoy es **{best_member.mention}** con un patrimonio acumulado de **{max_wealth:,} {CURRENCY_NAME} {CURRENCY_SYMBOL}**.\n\n"
+            f"💵 **En mano:** {wallet:,} {CURRENCY_SYMBOL}\n"
+            f"🪨 **En la cornisa:** {bank:,} {CURRENCY_SYMBOL}\n\n"
+            f"https://www.youtube.com/watch?v=0UvtvJlkdes \n\n"
+        )
+
+        if idle_hours >= INACTIVITY_STAGE_1_HOURS:
+            desc += (
+                f"⚠️ **Aviso de los tejados:** Lleva **{int(idle_hours)} horas** sin arriesgar almas en la calle. "
+                f"¡Robin Hood tiene el ojo puesto en su caja fuerte!\n\n"
+            )
+
+        desc += "*«Desde las cornisas veo brillar ese fajo de almas. ¡A ver cuánto tiempo aguantas en la cima antes de que te afanen, chacho!»*"
+
+        embed = discord.Embed(
+            title=f"👑 ¡EL MAGNATE DEL DÍA: {role_name.upper()}!",
+            description=desc,
+            color=discord.Color.gold()
+        )
+        embed.set_thumbnail(url=best_member.display_avatar.url)
+        embed.set_footer(text="Carlos always says: the higher you climb, the harder the fall.")
+
+        try:
+            await channel.send(
+                content=f"📢 ¡Edición Diaria de Spanish Harlem! El magnate de hoy es {best_member.mention}.",
+                embed=embed,
+                allowed_mentions=discord.AllowedMentions(users=True)
+            )
+        except (discord.Forbidden, discord.HTTPException) as e:
+            print(f"[IVY ECONOMY] No se pudo enviar el anuncio diario de millonario en {channel}: {e}")
+
     # --- Comando de prueba para Owners ---
 
     @commands.command(name="eventtest", hidden=True)
@@ -467,6 +559,8 @@ class EconomyEventsMixin:
             "ruleta": self._trigger_roulette,
             "lluvia": self._trigger_boost,
             "robin": self._trigger_robin_hood,
+            "millonario": self._trigger_daily_richest_announcement,
+            "magnate": self._trigger_daily_richest_announcement,
         }
 
         if tipo:

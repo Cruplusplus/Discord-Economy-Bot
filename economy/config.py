@@ -4,6 +4,7 @@ Centraliza la carga de variables de entorno y define constantes sin numeros magi
 """
 
 import os
+import datetime
 from typing import Optional, Tuple
 from dotenv import load_dotenv
 
@@ -40,6 +41,22 @@ def _parse_optional_int_env(var_name: str, default: Optional[int] = None) -> Opt
         except ValueError:
             pass
     return default
+
+
+def _parse_time_env(var_name: str, default_hour: int = 20, default_minute: int = 0) -> datetime.time:
+    """Parsea una hora HH:MM desde el entorno utilizando la zona horaria del sistema."""
+    raw = os.getenv(var_name)
+    local_tz = datetime.datetime.now().astimezone().tzinfo
+    if raw:
+        try:
+            parts = raw.strip().split(":")
+            h = int(parts[0])
+            m = int(parts[1]) if len(parts) > 1 else 0
+            if 0 <= h <= 23 and 0 <= m <= 59:
+                return datetime.time(hour=h, minute=m, tzinfo=local_tz)
+        except Exception:
+            pass
+    return datetime.time(hour=default_hour, minute=default_minute, tzinfo=local_tz)
 
 
 # --- Moneda y Valores Iniciales ---
@@ -86,6 +103,7 @@ PRISON_DURATION: int = _parse_int_env("PRISON_DURATION", 900)
 RICHEST_ROLE_ID: int = _parse_int_env("RICHEST_ROLE_ID", 0)
 RICHEST_ROLE_NAME: str = os.getenv("RICHEST_ROLE_NAME", "El Más Millonario")
 RICHEST_ANNOUNCE_CHANNEL_ID: Optional[int] = _parse_optional_int_env("RICHEST_ANNOUNCE_CHANNEL_ID", None)
+RICHEST_DAILY_ANNOUNCE_TIME: datetime.time = _parse_time_env("RICHEST_DAILY_ANNOUNCE_TIME", 20, 0)
 
 # --- Duelos y Apuestas (Duelo) ---
 DUEL_CHANNEL_ID: Optional[int] = _parse_optional_int_env("DUEL_CHANNEL_ID", None)

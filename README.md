@@ -113,6 +113,10 @@ Discord Economy Bot/
    # ID del rol a otorgar al Más Millonario
    RICHEST_ROLE_ID=123456789012345678
    RICHEST_ROLE_NAME=El Más Millonario
+
+   # ID del canal para el boletín diario y hora de publicación (HH:MM)
+   RICHEST_ANNOUNCE_CHANNEL_ID=123456789012345678
+   RICHEST_DAILY_ANNOUNCE_TIME=20:00
    ```
 
 ---

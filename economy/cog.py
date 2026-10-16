@@ -341,37 +341,8 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 print(f"[IVY ECONOMY] Error de Discord al asignar rol: {e}")
                 return best_member
 
-            # 6. Anuncio dinámico con la voz de Ivy
-            target_channel = None
-            if RICHEST_ANNOUNCE_CHANNEL_ID:
-                target_channel = guild.get_channel(RICHEST_ANNOUNCE_CHANNEL_ID)
-            if target_channel is None:
-                target_channel = announce_channel
-
-            if target_channel:
-                desc = (
-                    f"¡Atención a todos los vecinos de Spanish Harlem! **{best_member.mention}** acaba de coronarse "
-                    f"como el nuevo portador de **{role.name}** con un patrimonio de **{max_wealth:,} {CURRENCY_NAME} {CURRENCY_SYMBOL}**.\n"
-                    f"https://www.youtube.com/watch?v=0UvtvJlkdes \n\n"
-                )
-                if previous_leader:
-                    desc += f"🥀 {previous_leader.mention} no pudo aguantar la presión y tuvo que ceder la corona de los tejados.\n\n"
-
-                desc += "*«Desde las cornisas veo brillar ese fajo de almas. ¡A ver cuánto tiempo aguantas en la cima antes de que te afanen, chacho!»*"
-
-                embed = discord.Embed(
-                    title=f"👑 ¡NUEVO MAGNATE DEL BARRIO: {role.name.upper()}!",
-                    description=desc,
-                    color=discord.Color.gold()
-                )
-                embed.set_thumbnail(url=best_member.display_avatar.url)
-                embed.set_footer(text="Carlos always says: the higher you climb, the harder the fall.")
-                try:
-                    await target_channel.send(embed=embed)
-                except (discord.Forbidden, discord.HTTPException):
-                    pass
-
         return best_member
+
 
     @commands.Cog.listener()
     async def on_ready(self):
