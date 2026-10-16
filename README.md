@@ -40,6 +40,7 @@ El módulo de economía está estructurado como un paquete modular en Python baj
 ```text
 Discord Economy Bot/
 ├── la_creatura_bot.py       # Entrada principal, ciclo de vida del bot y comandos utilitarios
+├── console.py               # Consola interactiva CLI en segundo plano (daemon thread)
 ├── stats.json               # Persistencia local de balances y estadísticas (ignorado en git)
 ├── requirements.txt         # Dependencias del proyecto
 └── economy/                 # Paquete modular de economía
@@ -148,6 +149,25 @@ python la_creatura_bot.py
 | `%bet <@combatiente> <monto>` | `%apostar` | Apuesta en un duelo activo durante el tiempo de apuestas. |
 | `%deadlock` | - | Lanza la señal de Deadlock con GIFs aleatorios. |
 | `%gif <búsqueda>` | - | Busca y envía un GIF animado mediante la API de Giphy. |
+
+---
+
+## 💻 Consola Interactiva en Terminal (CLI)
+
+El bot incluye una consola interactiva en tiempo real que se ejecuta en segundo plano sin congelar ni interferir con la conexión de Discord. Puedes escribir comandos directamente en la terminal mientras el bot está en línea:
+
+| Comando CLI | Descripción |
+| :--- | :--- |
+| `hablar <canal_id\|nombre> <mensaje>` | Envía un mensaje como Ivy directamente al canal especificado. |
+| `add <user_id> <monto> [w\|b]` | Suma o resta almas (valores negativos) a la billetera o banco. |
+| `set <user_id> <wallet> [bank]` | Establece el saldo exacto de un usuario. |
+| `bal <user_id>` | Muestra en terminal el balance y estado penal de un miembro. |
+| `unjail <user_id>` / `jail <user_id> [min]` | Libera o encarcela a un usuario inmediatamente. |
+| `event <drop\|trivia\|raid\|ruleta...>` | Dispara un evento en el canal oficial de economía. |
+| `servers` | Lista los servidores donde está conectado el bot. |
+| `channels [guild_id]` | Muestra los canales de texto disponibles y sus IDs. |
+| `help` | Despliega la ayuda de comandos de consola. |
+| `exit` / `quit` | Apaga el bot de forma limpia y ordenada. |
 
 ---
 
