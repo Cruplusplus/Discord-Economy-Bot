@@ -232,6 +232,14 @@ class EconomyDuelsMixin:
             winner_data = self.db.get_user_data(winner.id)
             winner_data["wallet"] += duel_pool
 
+            loser_data = self.db.get_user_data(loser_id)
+            loser_data["last_loss"] = {
+                "amount": stake,
+                "game": f"duelo contra {winner.display_name}",
+                "timestamp": time.time(),
+                "reverted": False,
+            }
+
             if winning_bets:
                 for bet in winning_bets:
                     bettor_data = self.db.get_user_data(bet["user"].id)
@@ -255,6 +263,13 @@ class EconomyDuelsMixin:
                 winner_data["wallet"] += losing_pool
 
             for bet in losing_bets:
+                bettor_data = self.db.get_user_data(bet["user"].id)
+                bettor_data["last_loss"] = {
+                    "amount": bet["amount"],
+                    "game": f"apuesta en duelo ({loser.display_name})",
+                    "timestamp": time.time(),
+                    "reverted": False,
+                }
                 payouts_info.append({
                     "user": bet["user"],
                     "won": False,

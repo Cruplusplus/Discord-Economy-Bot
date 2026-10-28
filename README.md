@@ -31,6 +31,7 @@ Adquiere artilugios temáticos de Spanish Harlem calibrados para la economía de
 - **🧤 Guante de Cerrajero (12,000 almas):** Efecto pasivo. Reduce el umbral de fallo de tu próximo `%rob` (de 12 a 8 en el d20), elevando tu éxito al 65%.
 - **🪨 Amuleto de Piedra (20,000 almas):** Escudo pasivo. Si intentan robarte con `%rob`, repele el asalto al 100%, envía al ladrón a prisión y se sacrifica. También absorbe el 50% de un asalto de Robin Hood.
 - **📢 Megáfono de Harlem (35,000 almas):** Emite un boletín de cornisa destacado con la voz de Ivy anunciado en el canal de economía.
+- **⏳ Cronómetro de Paradox (45,000 almas):** Artefacto cronomántico de Paradox. Si pierdes una apuesta en `%coin`, `%ruleta`, `%blackjack` o `%duelo`, te permite rebobinar el tiempo (con botón interactivo en el mensaje de derrota o mediante `%rebobinar`) para anular la pérdida y recuperar el 100% de tus almas.
 
 ### 🎰 Gran Pozo Comunitario y Lotería Semanal (`%loteria`, `%ticket`)
 - Pozo base municipal garantizado (50,000 almas) que se incrementa con cada ticket comprado y un impuesto barrial del 1% en las pérdidas de casino (Ruleta, Coin, Blackjack).
@@ -173,6 +174,7 @@ python la_creatura_bot.py
 | `%loteria` | `%pozo`, `%jackpot` | Consulta el pozo acumulado, tus boletos y probabilidades del sorteo semanal. |
 | `%ticket [cant\|all\|max]` | `%tickets`, `%boletos` | Compra boletos para la lotería (2,000 c/u, máx 10 por sorteo). |
 | `%sorteoloteria` | `%drawlottery`, `%sortear` | Ejecuta inmediatamente el sorteo del Gran Pozo (Solo Administradores). |
+| `%rebobinar` | `%rewind` | Rebobina tu última tirada o duelo perdido usando un Cronómetro de Paradox. |
 
 > **Tip de Apuestas y Movimientos:** En cualquier comando que requiera un monto, puedes usar una cifra numérica, `all` / `todo` para el 100% de tus almas disponibles, o `half` / `mitad` para mover o apostar exactamente el 50%.
 | `%deadlock` | - | Lanza la señal de Deadlock con GIFs aleatorios. |

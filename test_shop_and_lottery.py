@@ -20,6 +20,8 @@ from economy.config import (
     ITEM_PRICE_STONE_CHARM,
     ITEM_PRICE_LOCKPICK,
     ITEM_PRICE_BAIL_BOND,
+    ITEM_PRICE_PARADOX_CHRONO,
+    PARADOX_REWIND_WINDOW_SECONDS,
 )
 from economy.database import DataManager
 from economy.shop import (
@@ -205,27 +207,27 @@ class TestShopAndLottery(unittest.TestCase):
     def test_lottery_buy_tickets_and_cap(self):
         async def run_test():
             user = self.db.get_user_data(900)
-            user["wallet"] = 50000
+            user["wallet"] = 100000
 
-            # Compra 5 tickets
-            ok, msg, user_tix, pot = await self.lottery.buy_tickets(900, 5)
+            half_tix = max(1, LOTTERY_MAX_TICKETS_PER_USER // 2)
+            ok, msg, user_tix, pot = await self.lottery.buy_tickets(900, half_tix)
             self.assertTrue(ok)
-            self.assertEqual(user_tix, 5)
-            self.assertEqual(user["wallet"], 50000 - (5 * LOTTERY_TICKET_PRICE))
-            self.assertEqual(pot, LOTTERY_BASE_JACKPOT + (5 * LOTTERY_TICKET_PRICE))
+            self.assertEqual(user_tix, half_tix)
+            self.assertEqual(user["wallet"], 100000 - (half_tix * LOTTERY_TICKET_PRICE))
+            self.assertEqual(pot, LOTTERY_BASE_JACKPOT + (half_tix * LOTTERY_TICKET_PRICE))
 
-            # Intenta comprar 6 mas (supera el limite de 10)
-            ok, msg, user_tix, pot = await self.lottery.buy_tickets(900, 6)
+            # Intenta comprar más de los permitidos por el tope anti-monopolio
+            ok, msg, user_tix, pot = await self.lottery.buy_tickets(900, LOTTERY_MAX_TICKETS_PER_USER + 1)
             self.assertFalse(ok)
             self.assertIn("anti-monopolio", msg.lower())
-            self.assertEqual(user_tix, 5)
 
-            # Compra los 5 restantes para alcanzar el limite exacto
-            ok, msg, user_tix, pot = await self.lottery.buy_tickets(900, 5)
+            # Compra los restantes para alcanzar el límite exacto
+            remaining = LOTTERY_MAX_TICKETS_PER_USER - half_tix
+            ok, msg, user_tix, pot = await self.lottery.buy_tickets(900, remaining)
             self.assertTrue(ok)
-            self.assertEqual(user_tix, 10)
+            self.assertEqual(user_tix, LOTTERY_MAX_TICKETS_PER_USER)
 
-            # Intenta comprar 1 mas teniendo 10
+            # Intenta comprar 1 más teniendo el tope
             ok, msg, user_tix, pot = await self.lottery.buy_tickets(900, 1)
             self.assertFalse(ok)
 
@@ -266,6 +268,83 @@ class TestShopAndLottery(unittest.TestCase):
 
         asyncio.run(run_test())
 
+
+    def test_paradox_chrono_catalog_and_aliases(self):
+        item = get_item("paradox_chrono")
+        self.assertIsNotNone(item)
+        self.assertEqual(item.price, ITEM_PRICE_PARADOX_CHRONO)
+        self.assertEqual(item.max_stack, 2)
+        self.assertTrue(item.usable)
+
+        # Aliases
+        self.assertEqual(get_item("paradox").item_id, "paradox_chrono")
+        self.assertEqual(get_item("bucle").item_id, "paradox_chrono")
+        self.assertEqual(get_item("cronometro").item_id, "paradox_chrono")
+        self.assertEqual(get_item("reloj").item_id, "paradox_chrono")
+        self.assertEqual(get_item("rewind").item_id, "paradox_chrono")
+        self.assertEqual(get_item("rebobinar").item_id, "paradox_chrono")
+
+    def test_paradox_chrono_rewind_logic(self):
+        from economy.cog import Economy
+
+        # Crear un cog simulado con base de datos real
+        class MockBot:
+            pass
+
+        cog = Economy(MockBot())
+        cog.db = self.db
+
+        async def run_rewind_tests():
+            user = self.db.get_user_data(2001)
+            user["wallet"] = 100000
+            inv = get_user_inventory(user)
+            inv["paradox_chrono"] = 1
+
+            # Simular pérdida de 50,000 en coin flip
+            user["wallet"] -= 50000
+            user["stats"]["gambles_lost"] = 1
+            now = time.time()
+            user["last_loss"] = {
+                "amount": 50000,
+                "game": "Cara o Cruz (CRUZ)",
+                "timestamp": now,
+                "reverted": False,
+            }
+
+            # 1. Rebobinar con éxito dentro de la ventana de 120s
+            ok, res = await cog.execute_temporal_rewind(2001)
+            self.assertTrue(ok)
+            self.assertEqual(res["amount"], 50000)
+            self.assertEqual(res["wallet"], 100000)
+            self.assertEqual(inv["paradox_chrono"], 0)
+            self.assertTrue(user["last_loss"]["reverted"])
+            self.assertEqual(user["stats"]["gambles_lost"], 0)
+
+            # 2. Intento de re-rebobinar la misma tirada (debe fallar)
+            inv["paradox_chrono"] = 1
+            ok, err = await cog.execute_temporal_rewind(2001)
+            self.assertFalse(ok)
+            self.assertIn("ya fue rebobinada", err)
+
+            # 3. Intento de rebobinar con tiempo expirado (>120s)
+            user["last_loss"] = {
+                "amount": 30000,
+                "game": "Ruleta (ROJO)",
+                "timestamp": now - 300,  # 5 minutos atras
+                "reverted": False,
+            }
+            ok, err = await cog.execute_temporal_rewind(2001)
+            self.assertFalse(ok)
+            self.assertIn("se enfrió", err)
+
+            # 4. Intento sin tener el ítem en la mochila
+            inv["paradox_chrono"] = 0
+            user["last_loss"]["timestamp"] = time.time()
+            ok, err = await cog.execute_temporal_rewind(2001)
+            self.assertFalse(ok)
+            self.assertIn("No tienes ningún", err)
+
+        asyncio.run(run_rewind_tests())
 
 if __name__ == "__main__":
     unittest.main()

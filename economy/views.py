@@ -351,3 +351,58 @@ class RobinHoodView(discord.ui.View):
                     await self.message.edit(embed=embed, view=self)
                 except Exception:
                     pass
+
+
+class RewindView(discord.ui.View):
+    """Vista con boton interactivo para rebobinar una tirada fallida con el Cronometro de Paradox."""
+
+    def __init__(self, cog: "Economy", user_id: int, amount: int, timeout: int = 120):
+        super().__init__(timeout=timeout)
+        self.cog = cog
+        self.user_id = user_id
+        self.amount = amount
+        self.used = False
+
+    @discord.ui.button(label="⏳ Rebobinar Tiempo (Paradox)", style=discord.ButtonStyle.primary, emoji="⌛")
+    async def rewind_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                "❌ Solo quien sufrió la derrota puede activar su propio Cronómetro de Paradox.",
+                ephemeral=True
+            )
+            return
+
+        if self.used:
+            await interaction.response.send_message("❌ Esta tirada ya fue rebobinada.", ephemeral=True)
+            return
+
+        ok, result = await self.cog.execute_temporal_rewind(self.user_id)
+        if not ok:
+            await interaction.response.send_message(result, ephemeral=True)
+            return
+
+        self.used = True
+        button.disabled = True
+        button.label = "⌛ Tiempo Rebobinado"
+        button.style = discord.ButtonStyle.secondary
+        self.stop()
+
+        await interaction.response.edit_message(view=self)
+
+        embed = discord.Embed(
+            title="⏳ ¡PARADOJA TEMPORAL: LÍNEA DE TIEMPO REBOBINADA!",
+            description=(
+                f"Paradox activó el intercambio cronológico. El tejido del espacio-tiempo se desgarró, "
+                f"anulando la pérdida de **+{result['amount']:,} {CURRENCY_SYMBOL}** en {result['game']}.\n\n"
+                f"💵 **Tus almas han regresado a tu bolsillo:** **{result['wallet']:,} {CURRENCY_SYMBOL}**\n\n"
+                f"*«Carlos always says: el tiempo no vuelve atrás... a menos que Paradox ande cerca jugando con sus relojes.»*"
+            ),
+            color=discord.Color.purple()
+        )
+        embed.set_footer(text="El Cronómetro de Paradox se ha consumido en la fractura temporal.")
+        await interaction.followup.send(embed=embed)
+
+    async def on_timeout(self):
+        if not self.used:
+            for item in self.children:
+                item.disabled = True

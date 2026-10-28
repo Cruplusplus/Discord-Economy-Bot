@@ -194,3 +194,11 @@ IVY_LOTTERY_WIN_QUOTES: List[str] = [
     "¡Revisamos la urna de piedra y el boleto ganador pertenece a **{winner_mention}**!\n"
     "Se acredita un premio histórico de **{jackpot:,} {currency}** directo a su cuenta. ¡Que corra el mofongo esta noche!"
 ]
+
+
+# --- Frases de Paradoja Temporal (Paradox) ---
+IVY_PARADOX_REWIND_QUOTES: List[str] = [
+    "⏳ **¡PARADOJA TEMPORAL EN ACCIÓN!**\n¿Sentiste ese zumbido en el aire? El segundero acaba de girar al revés. Paradox abrió una grieta temporal y tus **{amount:,} {currency}** están de vuelta en el bolsillo como si esa tirada nunca hubiese ocurrido.",
+    "⌛ **¡FRACTURA CRONOLÓGICA ACTIVADA!**\nCarlos always says: el tiempo no vuelve atrás... bueno, a menos que Paradox ande cerca tocando sus relojes raros. ¡Tus **{amount:,} {currency}** volvieron intactas a tu mano!",
+    "🕰️ **¡INTERCAMBIO PARADÓJICO CONSUMADO!**\nLa aguja del reloj retrocedió un compás. Esa mala racha acaba de ser borrada de la historia de Spanish Harlem. Recuperaste tus **{amount:,} {currency}**."
+]

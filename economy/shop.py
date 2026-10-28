@@ -16,6 +16,7 @@ from .config import (
     ITEM_PRICE_LOCKPICK,
     ITEM_PRICE_STONE_CHARM,
     ITEM_PRICE_MEGAPHONE,
+    ITEM_PRICE_PARADOX_CHRONO,
     COFFEE_DURATION_SECONDS,
     KUDZU_DURATION_SECONDS,
 )
@@ -110,6 +111,16 @@ CATALOG: Dict[str, ShopItem] = {
         usable=True,
         max_stack=3,
     ),
+    "paradox_chrono": ShopItem(
+        item_id="paradox_chrono",
+        name="Cronómetro de Paradox",
+        emoji="⏳",
+        price=ITEM_PRICE_PARADOX_CHRONO,
+        category="Especial",
+        description="Artefacto cronomántico de Paradox. Si pierdes en coin, ruleta, blackjack o duelo, rebobina el tiempo y recupera el 100% de las almas perdidas.",
+        usable=True,
+        max_stack=2,
+    ),
 }
 
 # Alias para facilitar compras y busquedas
@@ -138,6 +149,15 @@ ITEM_ALIASES: Dict[str, str] = {
     "megafono": "megaphone",
     "megaphone": "megaphone",
     "anuncio": "megaphone",
+    "paradox": "paradox_chrono",
+    "cronometro": "paradox_chrono",
+    "bucle": "paradox_chrono",
+    "reloj": "paradox_chrono",
+    "chrono": "paradox_chrono",
+    "rewind": "paradox_chrono",
+    "rebobinar": "paradox_chrono",
+    "paradoxa": "paradox_chrono",
+    "paradox_chrono": "paradox_chrono",
 }
 
 

@@ -52,6 +52,8 @@ from .config import (
     LOTTERY_TICKET_PRICE,
     LOTTERY_MAX_TICKETS_PER_USER,
     LOTTERY_BASE_JACKPOT,
+    ITEM_PRICE_PARADOX_CHRONO,
+    PARADOX_REWIND_WINDOW_SECONDS,
 )
 from .lore import (
     IVY_WORK_ACTIVITIES,
@@ -70,6 +72,7 @@ from .lore import (
     IVY_SHOP_BUY_QUOTES,
     IVY_SHOP_USE_QUOTES,
     IVY_LOTTERY_BUY_QUOTES,
+    IVY_PARADOX_REWIND_QUOTES,
 )
 from .database import DataManager
 from .events import EconomyEventsMixin
@@ -90,6 +93,7 @@ from .shop import (
     ShopView,
     InventoryView,
 )
+from .views import RewindView
 from .lottery import LotteryManager
 
 
@@ -431,6 +435,51 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         return best_member
 
 
+    async def execute_temporal_rewind(self, user_id: int) -> Tuple[bool, Any]:
+        """Ejecuta el rebobinado de una tirada fallida usando el Cronómetro de Paradox."""
+        now = time.time()
+        async with self.db.lock:
+            user_data = self.db.get_user_data(user_id)
+            inv = get_user_inventory(user_data)
+            if inv.get("paradox_chrono", 0) <= 0:
+                return False, "❌ No tienes ningún **Cronómetro de Paradox** en tu mochila."
+
+            last_loss = user_data.get("last_loss")
+            if not last_loss:
+                return False, "❌ No tienes ninguna tirada reciente registrada para rebobinar."
+
+            if last_loss.get("reverted", False):
+                return False, "❌ Esa tirada ya fue rebobinada en el continuo espacio-temporal."
+
+            elapsed = now - last_loss.get("timestamp", 0)
+            if elapsed > PARADOX_REWIND_WINDOW_SECONDS:
+                return False, (
+                    f"❌ El tejido temporal ya se enfrió (pasaron {int(elapsed)}s). "
+                    f"Las paradojas solo pueden abrirse dentro de los {PARADOX_REWIND_WINDOW_SECONDS}s posteriores a la tirada."
+                )
+
+            lost_amount = last_loss.get("amount", 0)
+            if lost_amount <= 0:
+                return False, "❌ La tirada registrada no involucró pérdida de almas."
+
+            # Consumir 1 Cronómetro de Paradox y restaurar saldo
+            inv["paradox_chrono"] -= 1
+            user_data["wallet"] += lost_amount
+            last_loss["reverted"] = True
+
+            # Restar 1 derrota en estadísticas si aplica
+            stats = user_data.setdefault("stats", {})
+            if stats.get("gambles_lost", 0) > 0:
+                stats["gambles_lost"] -= 1
+
+            await self.db.save()
+
+        return True, {
+            "amount": lost_amount,
+            "game": last_loss.get("game", "apuesta"),
+            "wallet": user_data["wallet"]
+        }
+
     # --------------------------------------------------------------------------
     #                 SISTEMA DE TIENDA Y MERCADO NEGRO DE IVY
     # --------------------------------------------------------------------------
@@ -595,6 +644,53 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 embed.set_footer(text=f"Anuncio emitido por {ctx.author.display_name} • Ivy Amplification System")
                 await ctx.send(content="@everyone 📢 ¡Atención al boletín de cornisa!", embed=embed)
                 return
+
+            elif item.item_id == "paradox_chrono":
+                ok, result = await self.execute_temporal_rewind(ctx.author.id)
+                if not ok:
+                    await ctx.reply(result)
+                    return
+
+                quote = random.choice(IVY_PARADOX_REWIND_QUOTES).format(
+                    amount=result["amount"],
+                    currency=CURRENCY_SYMBOL
+                )
+                embed = discord.Embed(
+                    title="⏳ ¡PARADOJA TEMPORAL: LÍNEA DE TIEMPO REBOBINADA!",
+                    description=(
+                        f"{quote}\n\n"
+                        f"🎲 **Tirada revertida:** {result['game']}\n"
+                        f"💵 **Almas actuales en mano:** **{result['wallet']:,} {CURRENCY_SYMBOL}**"
+                    ),
+                    color=discord.Color.purple()
+                )
+                embed.set_footer(text="El Cronómetro de Paradox se ha consumido en la fractura temporal.")
+                await ctx.reply(embed=embed)
+                return
+
+    @commands.command(name="rebobinar", aliases=["rewind"])
+    async def rebobinar(self, ctx: commands.Context):
+        """Rebobina tu última tirada o duelo fallido usando un Cronómetro de Paradox."""
+        ok, result = await self.execute_temporal_rewind(ctx.author.id)
+        if not ok:
+            await ctx.reply(result)
+            return
+
+        quote = random.choice(IVY_PARADOX_REWIND_QUOTES).format(
+            amount=result["amount"],
+            currency=CURRENCY_SYMBOL
+        )
+        embed = discord.Embed(
+            title="⏳ ¡PARADOJA TEMPORAL: LÍNEA DE TIEMPO REBOBINADA!",
+            description=(
+                f"{quote}\n\n"
+                f"🎲 **Tirada revertida:** {result['game']}\n"
+                f"💵 **Almas actuales en mano:** **{result['wallet']:,} {CURRENCY_SYMBOL}**"
+            ),
+            color=discord.Color.purple()
+        )
+        embed.set_footer(text="El Cronómetro de Paradox se ha consumido en la fractura temporal.")
+        await ctx.reply(embed=embed)
 
     # --------------------------------------------------------------------------
     #                 SISTEMA DE LOTERIA Y GRAN POZO DEL BARRIO
@@ -822,6 +918,12 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             else:
                 user["wallet"] -= parsed_amount
                 user["stats"]["gambles_lost"] = user["stats"].get("gambles_lost", 0) + 1
+                user["last_loss"] = {
+                    "amount": parsed_amount,
+                    "game": f"Cara o Cruz ({resultado.upper()})",
+                    "timestamp": now,
+                    "reverted": False,
+                }
                 tax = max(1, int(parsed_amount * 0.01))
                 lottery = self.db.get_lottery_data()
                 lottery["jackpot"] = lottery.get("jackpot", LOTTERY_BASE_JACKPOT) + tax
@@ -851,7 +953,16 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 text=f"⚠️ [Magnate] Apuesta insuficiente para resetear inactividad. Mínimo: {req_bet:,} {CURRENCY_SYMBOL} ({int(MIN_RISK_BET_PERCENT * 100)}% de tu fortuna)."
             )
 
-        await ctx.reply(embed=embed)
+        coin_view = None
+        if resultado != eleccion_normalizada:
+            inv = user.get("inventory", {})
+            if inv.get("paradox_chrono", 0) > 0:
+                coin_view = RewindView(self, user_id, parsed_amount)
+
+        if coin_view:
+            await ctx.reply(embed=embed, view=coin_view)
+        else:
+            await ctx.reply(embed=embed)
 
         if ctx.guild:
             leader_id, leader_wealth = self._top_leader_cache.get(ctx.guild.id, (0, 0))
@@ -931,6 +1042,12 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             else:
                 user["wallet"] -= parsed_amount
                 user["stats"]["gambles_lost"] = user["stats"].get("gambles_lost", 0) + 1
+                user["last_loss"] = {
+                    "amount": parsed_amount,
+                    "game": f"Ruleta ({color_emoji} {resultado.upper()})",
+                    "timestamp": now,
+                    "reverted": False,
+                }
                 tax = max(1, int(parsed_amount * 0.01))
                 lottery = self.db.get_lottery_data()
                 lottery["jackpot"] = lottery.get("jackpot", LOTTERY_BASE_JACKPOT) + tax
@@ -962,7 +1079,16 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 text=f"⚠️ [Magnate] Apuesta insuficiente para resetear inactividad. Mínimo: {req_bet:,} {CURRENCY_SYMBOL} ({int(MIN_RISK_BET_PERCENT * 100)}% de tu fortuna)."
             )
 
-        await ctx.reply(embed=embed)
+        ruleta_view = None
+        if not acertado:
+            inv = user.get("inventory", {})
+            if inv.get("paradox_chrono", 0) > 0:
+                ruleta_view = RewindView(self, user_id, parsed_amount)
+
+        if ruleta_view:
+            await ctx.reply(embed=embed, view=ruleta_view)
+        else:
+            await ctx.reply(embed=embed)
 
         if ctx.guild:
             leader_id, leader_wealth = self._top_leader_cache.get(ctx.guild.id, (0, 0))
