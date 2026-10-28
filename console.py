@@ -103,6 +103,8 @@ class ConsoleManager:
             "jail": self._cmd_jail,
             "event": self._cmd_event,
             "eventtest": self._cmd_event,
+            "lottery": self._cmd_lottery,
+            "pozo": self._cmd_lottery,
             "servers": self._cmd_servers,
             "guilds": self._cmd_servers,
             "channels": self._cmd_channels,
@@ -135,6 +137,7 @@ class ConsoleManager:
 - bal <user_id>                      : Consulta el saldo y estado penal
 - unjail <user_id>                   : Libera a un usuario de prision
 - jail <user_id> [minutos]           : Envia a prision a un usuario
+- lottery [info|draw]                : Consulta estado del pozo o ejecuta el sorteo
 - event <drop|trivia|raid|etc>       : Dispara un evento en el canal oficial
 - servers                            : Lista los servidores donde esta el bot
 - channels [guild_id]                : Lista los canales de texto disponibles
@@ -366,6 +369,8 @@ class ConsoleManager:
             "robin": economy_cog._trigger_robin_hood,
             "millonario": economy_cog._trigger_daily_richest_announcement,
             "magnate": economy_cog._trigger_daily_richest_announcement,
+            "loteria": economy_cog._trigger_lottery_draw,
+            "pozo": economy_cog._trigger_lottery_draw,
         }
 
         tipo = args[0].lower() if args else None
@@ -398,6 +403,38 @@ class ConsoleManager:
             ]
             handler = random.choices(eventos_test, weights=pesos_test, k=1)[0]
             await handler(channel)
+
+    async def _cmd_lottery(self, args: List[str]) -> None:
+        """Gestiona la loteria y el pozo del barrio desde la terminal."""
+        economy_cog = self.bot.get_cog("Economy")
+        if not economy_cog or not hasattr(economy_cog, "lottery"):
+            print("[CONSOLA] Modulo de economia o loteria no disponible.")
+            return
+
+        subcmd = args[0].lower() if args else "info"
+
+        if subcmd in ("draw", "sortear", "tirar"):
+            print("[CONSOLA] Ejecutando sorteo manual del Gran Pozo...")
+            await economy_cog._trigger_lottery_draw()
+            print("[CONSOLA] Sorteo finalizado y anunciado.")
+        else:
+            lottery_data = economy_cog.lottery.get_lottery_data()
+            jackpot = lottery_data.get("jackpot", 50000)
+            tickets = lottery_data.get("tickets", {})
+            total_tickets = sum(tickets.values())
+            last_winner = lottery_data.get("last_winner")
+
+            print("\n[ESTADO DEL GRAN POZO Y LOTERIA]")
+            print(f"- Pozo Acumulado: {jackpot:,} almas")
+            print(f"- Total de Tickets en Juego: {total_tickets}")
+            print(f"- Apostadores Participando: {len(tickets)}")
+            if tickets:
+                for uid, qty in sorted(tickets.items(), key=lambda x: x[1], reverse=True)[:5]:
+                    prob = (qty / total_tickets * 100) if total_tickets > 0 else 0
+                    print(f"  • Usuario {uid}: {qty} ticket(s) ({prob:.1f}%)")
+            if last_winner:
+                print(f"- Ultimo Ganador: Usuario {last_winner['user_id']} ({last_winner['amount']:,} almas)")
+            print()
 
     async def _cmd_servers(self, args: List[str]) -> None:
         """Lista los servidores en los que participa el bot."""

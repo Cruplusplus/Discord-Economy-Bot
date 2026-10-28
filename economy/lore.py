@@ -164,3 +164,41 @@ IVY_BLACKJACK_PUSH_QUOTES: List[str] = [
     "⚖️ **¡EMPATE! ({total} a {total}).**\nCarlos always says: un empate no te llena el bolsillo, pero tampoco te deja en la lona. Tomá tu apuesta de vuelta.",
     "⚖️ **¡MANOS IGUALADAS EN {total}!**\nNi para vos ni para mí. Las almas vuelven a tu cuenta tal cual vinieron."
 ]
+
+
+# --- Frases de Tienda y Mercado Negro ---
+IVY_SHOP_BUY_QUOTES: List[str] = [
+    "¡Trato hecho, vecino! Te envuelvo el **{item_name}** y me guardo las **{price:,} {currency}**. Carlos always says: un buen artilugio en el bolsillo vale más que mil lamentos.",
+    "¡Excelente compra! Ese **{item_name}** te va a salvar las plumas en las calles de Spanish Harlem.",
+    "¡Mercancía entregada! Guardá bien tu **{item_name}** en la mochila con `%inv` antes de que algún carterista te lo fiche."
+]
+
+IVY_SHOP_USE_QUOTES: List[str] = [
+    "🌿 ¡Artilugio activado! Sentís el poder del **{item_name}** corriendo por tus venas.",
+    "🪨 ¡Efecto desatado! Carlos always says: las herramientas están para usarse en el momento justo.",
+    "✨ ¡Activación exitosa! El **{item_name}** ya está haciendo efecto en tu jornada."
+]
+
+# --- Frases de Lotería y Pozo del Barrio ---
+IVY_LOTTERY_BUY_QUOTES: List[str] = [
+    "🎟️ ¡Boletos anotados en el libro de la catedral! Compraste **{count} ticket(s)** por **{cost:,} {currency}**. ¡Mucha suerte en el sorteo!",
+    "🎟️ ¡Ficha jugada! Tus **{count} número(s)** ya están dando vueltas en el bolillero del barrio. ¡El pozo no para de crecer!",
+    "🎟️ ¡Bien ahí, vecino! Metiste **{count} ticket(s)** a la urna de piedra. Si sale tu nombre, te forrás hasta las muelas."
+]
+
+IVY_LOTTERY_WIN_QUOTES: List[str] = [
+    "🎉 ¡¡ATENCIÓN A TODAS LAS CORNISAS DE SPANISH HARLEM!! ¡EL BOLILLERO HABLÓ!\n\n"
+    "El afortunado vecino que se lleva el pozo acumulado de **{jackpot:,} {currency}** es... ¡¡{winner_mention}!!\n"
+    "Carlos always says: la fortuna visita a quien menos la espera pero más la festeja. ¡A disfrutar esas almas!",
+    "🏆 ¡¡SORTEO EXTRAORDINARIO DEL POZO DEL BARRIO!!\n\n"
+    "¡Revisamos la urna de piedra y el boleto ganador pertenece a **{winner_mention}**!\n"
+    "Se acredita un premio histórico de **{jackpot:,} {currency}** directo a su cuenta. ¡Que corra el mofongo esta noche!"
+]
+
+
+# --- Frases de Paradoja Temporal (Paradox) ---
+IVY_PARADOX_REWIND_QUOTES: List[str] = [
+    "⏳ **¡PARADOJA TEMPORAL EN ACCIÓN!**\n¿Sentiste ese zumbido en el aire? El segundero acaba de girar al revés. Paradox abrió una grieta temporal y tus **{amount:,} {currency}** están de vuelta en el bolsillo como si esa tirada nunca hubiese ocurrido.",
+    "⌛ **¡FRACTURA CRONOLÓGICA ACTIVADA!**\nCarlos always says: el tiempo no vuelve atrás... bueno, a menos que Paradox ande cerca tocando sus relojes raros. ¡Tus **{amount:,} {currency}** volvieron intactas a tu mano!",
+    "🕰️ **¡INTERCAMBIO PARADÓJICO CONSUMADO!**\nLa aguja del reloj retrocedió un compás. Esa mala racha acaba de ser borrada de la historia de Spanish Harlem. Recuperaste tus **{amount:,} {currency}**."
+]

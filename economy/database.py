@@ -89,6 +89,8 @@ class DataManager:
             "last_rob": 0.0,
             "prison_until": 0.0,
             "last_gamble": time.time(),
+            "inventory": {},
+            "buffs": {},
             "stats": {
                 "times_worked": 0,
                 "times_robbed": 0,
@@ -115,15 +117,46 @@ class DataManager:
 
         return user
 
+    def get_lottery_data(self) -> Dict[str, Any]:
+        """Obtiene o inicializa el registro del pozo y tickets de la loteria."""
+        from .config import LOTTERY_BASE_JACKPOT
+        lottery_defaults = {
+            "jackpot": int(LOTTERY_BASE_JACKPOT),
+            "tickets": {},
+            "last_winner": None,
+            "last_draw": 0.0,
+            "total_drawn": 0,
+        }
+        if "_lottery" not in self._data:
+            self._data["_lottery"] = lottery_defaults
+        else:
+            for k, v in lottery_defaults.items():
+                if k not in self._data["_lottery"]:
+                    self._data["_lottery"][k] = v
+        return self._data["_lottery"]
+
+    def reset_lottery(self) -> Dict[str, Any]:
+        """Reinicia los tickets y repone el pozo base tras un sorteo."""
+        from .config import LOTTERY_BASE_JACKPOT
+        lottery = self.get_lottery_data()
+        lottery["tickets"] = {}
+        lottery["jackpot"] = int(LOTTERY_BASE_JACKPOT)
+        lottery["last_draw"] = time.time()
+        lottery["total_drawn"] = lottery.get("total_drawn", 0) + 1
+        return lottery
+
     def get_all_users(self) -> Dict[str, Any]:
-        """Devuelve todos los registros de usuarios asegurando enteros."""
-        for udata in self._data.values():
-            if isinstance(udata, dict):
-                if "wallet" in udata and udata["wallet"] is not None:
-                    udata["wallet"] = int(round(udata["wallet"]))
-                if "bank" in udata and udata["bank"] is not None:
-                    udata["bank"] = int(round(udata["bank"]))
-        return self._data
+        """Devuelve todos los registros de usuarios reales asegurando enteros y filtrando metadatos."""
+        user_dict = {}
+        for uid_str, udata in self._data.items():
+            if not uid_str.isdigit() or not isinstance(udata, dict):
+                continue
+            if "wallet" in udata and udata["wallet"] is not None:
+                udata["wallet"] = int(round(udata["wallet"]))
+            if "bank" in udata and udata["bank"] is not None:
+                udata["bank"] = int(round(udata["bank"]))
+            user_dict[uid_str] = udata
+        return user_dict
 
     @property
     def lock(self) -> asyncio.Lock:

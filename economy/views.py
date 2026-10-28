@@ -21,6 +21,7 @@ from .config import (
     ROULETTE_RISK_WIN_CHANCE,
     ROULETTE_WIN_AMOUNT,
     ROULETTE_PRISON_DURATION,
+    KUDZU_DROP_BONUS_PERCENT,
 )
 
 if TYPE_CHECKING:
@@ -52,16 +53,27 @@ class SoulDropView(discord.ui.View):
             self.stop()
 
             user_data = self.cog.db.get_user_data(interaction.user.id)
-            user_data["wallet"] += self.amount
+            buffs = user_data.setdefault("buffs", {})
+            kudzu_until = buffs.get("kudzu_until", 0.0)
+            kudzu_bonus = 0
+            if kudzu_until > time.time():
+                kudzu_bonus = int(round(self.amount * KUDZU_DROP_BONUS_PERCENT))
+
+            total_reward = self.amount + kudzu_bonus
+            user_data["wallet"] += total_reward
             await self.cog.db.save()
+
+        desc = (
+            f"¡Rápido como una gárgola en picada! **{interaction.user.mention}** se abalanzó sobre el alijo "
+            f"y se embolsó **+{self.amount:,} {CURRENCY_NAME} {CURRENCY_SYMBOL}**.\n"
+        )
+        if kudzu_bonus > 0:
+            desc += f"🌿 **¡Bendición de Semillas de Kudzu!** (+{kudzu_bonus:,} {CURRENCY_SYMBOL} de bonus extra)\n"
+        desc += f"\nEn sus bolsillos ahora carga con: **{user_data['wallet']:,} {CURRENCY_SYMBOL}**"
 
         embed = discord.Embed(
             title="⚡ ¡ALIJO RECLAMADO A TODA VELOCIDAD!",
-            description=(
-                f"¡Rápido como una gárgola en picada! **{interaction.user.mention}** se abalanzó sobre el alijo "
-                f"y se embolsó **+{self.amount:,} {CURRENCY_NAME} {CURRENCY_SYMBOL}**.\n\n"
-                f"En sus bolsillos ahora carga con: **{user_data['wallet']:,} {CURRENCY_SYMBOL}**"
-            ),
+            description=desc,
             color=discord.Color.green()
         )
         embed.set_thumbnail(url=interaction.user.display_avatar.url)
@@ -339,3 +351,58 @@ class RobinHoodView(discord.ui.View):
                     await self.message.edit(embed=embed, view=self)
                 except Exception:
                     pass
+
+
+class RewindView(discord.ui.View):
+    """Vista con boton interactivo para rebobinar una tirada fallida con el Cronometro de Paradox."""
+
+    def __init__(self, cog: "Economy", user_id: int, amount: int, timeout: int = 120):
+        super().__init__(timeout=timeout)
+        self.cog = cog
+        self.user_id = user_id
+        self.amount = amount
+        self.used = False
+
+    @discord.ui.button(label="⏳ Rebobinar Tiempo (Paradox)", style=discord.ButtonStyle.primary, emoji="⌛")
+    async def rewind_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                "❌ Solo quien sufrió la derrota puede activar su propio Cronómetro de Paradox.",
+                ephemeral=True
+            )
+            return
+
+        if self.used:
+            await interaction.response.send_message("❌ Esta tirada ya fue rebobinada.", ephemeral=True)
+            return
+
+        ok, result = await self.cog.execute_temporal_rewind(self.user_id)
+        if not ok:
+            await interaction.response.send_message(result, ephemeral=True)
+            return
+
+        self.used = True
+        button.disabled = True
+        button.label = "⌛ Tiempo Rebobinado"
+        button.style = discord.ButtonStyle.secondary
+        self.stop()
+
+        await interaction.response.edit_message(view=self)
+
+        embed = discord.Embed(
+            title="⏳ ¡PARADOJA TEMPORAL: LÍNEA DE TIEMPO REBOBINADA!",
+            description=(
+                f"Paradox activó el intercambio cronológico. El tejido del espacio-tiempo se desgarró, "
+                f"anulando la pérdida de **+{result['amount']:,} {CURRENCY_SYMBOL}** en {result['game']}.\n\n"
+                f"💵 **Tus almas han regresado a tu bolsillo:** **{result['wallet']:,} {CURRENCY_SYMBOL}**\n\n"
+                f"*«Carlos always says: el tiempo no vuelve atrás... a menos que Paradox ande cerca jugando con sus relojes.»*"
+            ),
+            color=discord.Color.purple()
+        )
+        embed.set_footer(text="El Cronómetro de Paradox se ha consumido en la fractura temporal.")
+        await interaction.followup.send(embed=embed)
+
+    async def on_timeout(self):
+        if not self.used:
+            for item in self.children:
+                item.disabled = True

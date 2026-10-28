@@ -317,6 +317,15 @@ class BlackjackView(discord.ui.View):
                 user_data["stats"]["gambles_won"] = user_data["stats"].get("gambles_won", 0) + 1
             elif outcome in ("loss", "player_bust"):
                 user_data["stats"]["gambles_lost"] = user_data["stats"].get("gambles_lost", 0) + 1
+                user_data["last_loss"] = {
+                    "amount": self.bet,
+                    "game": "blackjack contra Ivy",
+                    "timestamp": time.time(),
+                    "reverted": False,
+                }
+                if hasattr(self.cog, "lottery") and self.cog.lottery:
+                    tax = max(1, int(self.bet * 0.01))
+                    await self.cog.lottery.add_to_jackpot(tax, acquire_lock=False)
 
             # Evaluacion en memoria del temporizador de Robin Hood ("Skin in the game")
             user_total = user_data.get("wallet", 0) + user_data.get("bank", 0)
@@ -411,6 +420,23 @@ class BlackjackView(discord.ui.View):
                 await self.message.edit(embed=final_embed, view=self)
             except discord.HTTPException:
                 pass
+
+        # Si el jugador perdio y tiene el Cronometro de Paradox, agregar boton de rebobinado
+        if outcome in ("loss", "player_bust"):
+            inv = user_data.get("inventory", {})
+            if inv.get("paradox_chrono", 0) > 0:
+                self.clear_items()
+                from .views import RewindView
+                rewind_view = RewindView(self.cog, self.user_id, self.bet)
+                for item in rewind_view.children:
+                    self.add_item(item)
+                if interaction and not interaction.response.is_done():
+                    await interaction.response.edit_message(embed=final_embed, view=self)
+                elif self.message:
+                    try:
+                        await self.message.edit(embed=final_embed, view=self)
+                    except discord.HTTPException:
+                        pass
 
         # 5. Sincronizacion reactiva de rol de lider si aplica
         if self.guild:

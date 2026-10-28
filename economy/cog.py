@@ -45,6 +45,15 @@ from .config import (
     INACTIVITY_STAGE_1_HOURS,
     BLACKJACK_PAYOUT_NORMAL,
     BLACKJACK_PAYOUT_NATURAL,
+    COFFEE_WORK_COOLDOWN,
+    COFFEE_DURATION_SECONDS,
+    KUDZU_DURATION_SECONDS,
+    LOCKPICK_FAIL_THRESHOLD,
+    LOTTERY_TICKET_PRICE,
+    LOTTERY_MAX_TICKETS_PER_USER,
+    LOTTERY_BASE_JACKPOT,
+    ITEM_PRICE_PARADOX_CHRONO,
+    PARADOX_REWIND_WINDOW_SECONDS,
 )
 from .lore import (
     IVY_WORK_ACTIVITIES,
@@ -60,6 +69,10 @@ from .lore import (
     IVY_BLACKJACK_NATURAL_QUOTES,
     IVY_BLACKJACK_PUSH_QUOTES,
     IVY_BLACKJACK_LOSS_QUOTES,
+    IVY_SHOP_BUY_QUOTES,
+    IVY_SHOP_USE_QUOTES,
+    IVY_LOTTERY_BUY_QUOTES,
+    IVY_PARADOX_REWIND_QUOTES,
 )
 from .database import DataManager
 from .events import EconomyEventsMixin
@@ -72,6 +85,16 @@ from .blackjack import (
     format_hand,
     BlackjackView,
 )
+from .shop import (
+    CATALOG,
+    get_item,
+    get_user_inventory,
+    get_user_buffs,
+    ShopView,
+    InventoryView,
+)
+from .views import RewindView
+from .lottery import LotteryManager
 
 
 class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
@@ -89,6 +112,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         self._top_leader_cache: Dict[int, Tuple[int, int]] = {}
         self._not_in_guild_cache: Dict[int, set[int]] = {}
         self.active_blackjacks: set[int] = set()
+        self.lottery = LotteryManager(self)
 
     # --------------------------------------------------------------------------
     #                         METODOS AUXILIARES
@@ -146,10 +170,20 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         return f"{secs}s"
 
     def _parse_amount(self, amount_str: str, current_balance: int) -> Optional[int]:
-        """Parsea el monto ingresado admitiendo 'all' o 'todo' para mover el total como entero."""
+        """
+        Parsea el monto ingresado admitiendo:
+        - Enteros positivos (ej: 50, 1000)
+        - 'all', 'todo', 'max' para el 100% del saldo disponible
+        - 'half', 'mitad', 'medio', 'med', '1/2' para el 50% del saldo disponible
+        """
         amount_str = amount_str.strip().lower()
         if amount_str in ("all", "todo", "max"):
             return int(round(current_balance))
+        elif amount_str in ("half", "mitad", "medio", "med", "1/2"):
+            half_val = int(current_balance // 2)
+            if half_val <= 0:
+                return None
+            return half_val
 
         try:
             val = int(amount_str)
@@ -401,6 +435,324 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         return best_member
 
 
+    async def execute_temporal_rewind(self, user_id: int) -> Tuple[bool, Any]:
+        """Ejecuta el rebobinado de una tirada fallida usando el Cronómetro de Paradox."""
+        now = time.time()
+        async with self.db.lock:
+            user_data = self.db.get_user_data(user_id)
+            inv = get_user_inventory(user_data)
+            if inv.get("paradox_chrono", 0) <= 0:
+                return False, "❌ No tienes ningún **Cronómetro de Paradox** en tu mochila."
+
+            last_loss = user_data.get("last_loss")
+            if not last_loss:
+                return False, "❌ No tienes ninguna tirada reciente registrada para rebobinar."
+
+            if last_loss.get("reverted", False):
+                return False, "❌ Esa tirada ya fue rebobinada en el continuo espacio-temporal."
+
+            elapsed = now - last_loss.get("timestamp", 0)
+            if elapsed > PARADOX_REWIND_WINDOW_SECONDS:
+                return False, (
+                    f"❌ El tejido temporal ya se enfrió (pasaron {int(elapsed)}s). "
+                    f"Las paradojas solo pueden abrirse dentro de los {PARADOX_REWIND_WINDOW_SECONDS}s posteriores a la tirada."
+                )
+
+            lost_amount = last_loss.get("amount", 0)
+            if lost_amount <= 0:
+                return False, "❌ La tirada registrada no involucró pérdida de almas."
+
+            # Consumir 1 Cronómetro de Paradox y restaurar saldo
+            inv["paradox_chrono"] -= 1
+            user_data["wallet"] += lost_amount
+            last_loss["reverted"] = True
+
+            # Restar 1 derrota en estadísticas si aplica
+            stats = user_data.setdefault("stats", {})
+            if stats.get("gambles_lost", 0) > 0:
+                stats["gambles_lost"] -= 1
+
+            await self.db.save()
+
+        return True, {
+            "amount": lost_amount,
+            "game": last_loss.get("game", "apuesta"),
+            "wallet": user_data["wallet"]
+        }
+
+    # --------------------------------------------------------------------------
+    #                 SISTEMA DE TIENDA Y MERCADO NEGRO DE IVY
+    # --------------------------------------------------------------------------
+
+    @commands.command(name="tienda", aliases=["shop", "mercado", "market"])
+    async def tienda(self, ctx: commands.Context):
+        """Abre el catálogo interactivo de la tienda y mercado negro de Spanish Harlem."""
+        user_data = self.db.get_user_data(ctx.author.id)
+        view = ShopView(self, ctx.author)
+        embed = view.build_embed(user_data)
+        await ctx.reply(embed=embed, view=view)
+
+    @commands.command(name="comprar", aliases=["buy"])
+    async def comprar(self, ctx: commands.Context, item_query: str, cantidad: int = 1):
+        """Compra un artículo directamente de la tienda por su nombre o alias."""
+        item = get_item(item_query)
+        if not item:
+            valid_items = ", ".join([f"`{k}`" for k in CATALOG.keys()])
+            await ctx.reply(
+                f"❌ No encontré ningún artículo llamado `{item_query}` en el mercado de Ivy.\n"
+                f"Artículos disponibles: {valid_items}. Usá `%tienda` para verlos con detalle."
+            )
+            return
+
+        if cantidad <= 0:
+            await ctx.reply("❌ Debes comprar al menos 1 unidad, chacho.")
+            return
+
+        async with self.db.lock:
+            user_data = self.db.get_user_data(ctx.author.id)
+            wallet = user_data.get("wallet", 0)
+            total_price = item.price * cantidad
+
+            if wallet < total_price:
+                await ctx.reply(
+                    f"❌ ¡Te faltan almas en la mano! Comprar **{cantidad}x {item.name}** cuesta "
+                    f"**{total_price:,} {CURRENCY_SYMBOL}** y solo tienes **{wallet:,} {CURRENCY_SYMBOL}** en el bolsillo."
+                )
+                return
+
+            inv = get_user_inventory(user_data)
+            current_count = inv.get(item.item_id, 0)
+            if current_count + cantidad > item.max_stack:
+                disponibles = max(0, item.max_stack - current_count)
+                await ctx.reply(
+                    f"❌ No tienes tanto espacio en la mochila para eso. Límite máximo: **{item.max_stack} unidades**.\n"
+                    f"Actualmente tienes **{current_count}** (solo puedes comprar **{disponibles}** más)."
+                )
+                return
+
+            user_data["wallet"] -= total_price
+            inv[item.item_id] = current_count + cantidad
+            await self.db.save()
+
+        quote = random.choice(IVY_SHOP_BUY_QUOTES).format(
+            item_name=f"{item.emoji} {item.name}",
+            price=total_price,
+            currency=CURRENCY_SYMBOL
+        )
+        embed = discord.Embed(
+            title="🛒 ¡Compra Realizada con Éxito!",
+            description=(
+                f"{quote}\n\n"
+                f"📦 **Llevas en tu mochila:** {inv[item.item_id]}/{item.max_stack} unidades\n"
+                f"💵 **Almas restantes en mano:** {user_data['wallet']:,} {CURRENCY_SYMBOL}\n\n"
+                f"💡 *Revisa tus cosas con `{ctx.prefix}inv` o actívalas con `{ctx.prefix}usar <item>`.*"
+            ),
+            color=discord.Color.teal()
+        )
+        await ctx.reply(embed=embed)
+
+    @commands.command(name="inventario", aliases=["inv", "mochila", "items"])
+    async def inventario(self, ctx: commands.Context, target: Optional[discord.Member] = None):
+        """Muestra la mochila con tus objetos y efectos temporales activos."""
+        user = target or ctx.author
+        user_data = self.db.get_user_data(user.id)
+        view = InventoryView(self, user)
+        embed = view.build_embed(user_data)
+        await ctx.reply(embed=embed)
+
+    @commands.command(name="usar", aliases=["use"])
+    async def usar(self, ctx: commands.Context, item_query: str, *, args: Optional[str] = None):
+        """Activa un consumible de tu inventario (café, semillas, megáfono)."""
+        item = get_item(item_query)
+        if not item:
+            await ctx.reply(f"❌ No reconozco el artículo `{item_query}`. Revisá tu `%inv`.")
+            return
+
+        if not item.usable:
+            await ctx.reply(
+                f"⚠️ El **{item.name}** es un artilugio pasivo. No se activa manualmente: "
+                f"permanece en tu `%inv` y entra en acción automáticamente cuando hace falta."
+            )
+            return
+
+        now = time.time()
+        async with self.db.lock:
+            user_data = self.db.get_user_data(ctx.author.id)
+            inv = get_user_inventory(user_data)
+            buffs = get_user_buffs(user_data)
+            count = inv.get(item.item_id, 0)
+
+            if count <= 0:
+                await ctx.reply(f"❌ No tienes ningún **{item.name}** en tu mochila. Compralo en la `%tienda`.")
+                return
+
+            if item.item_id == "carlos_coffee":
+                inv[item.item_id] -= 1
+                current_until = max(now, buffs.get("coffee_until", 0.0))
+                buffs["coffee_until"] = current_until + COFFEE_DURATION_SECONDS
+                await self.db.save()
+
+                rem = int(buffs["coffee_until"] - now)
+                m = rem // 60
+                await ctx.reply(
+                    f"☕ **¡GLUP, GLUP, GLUP! Te tomaste el café bien cargado de Carlos.**\n"
+                    f"¡Sientes una descarga de energía directa al corazón de piedra!\n\n"
+                    f"⚡ **Efecto:** Tu cooldown de `%work` se redujo a solo **{COFFEE_WORK_COOLDOWN} segundos**.\n"
+                    f"⏳ **Duración restante:** {m} minutos.\n"
+                    f"📦 Te quedan **{inv[item.item_id]}** café(s) en la mochila."
+                )
+                return
+
+            elif item.item_id == "kudzu_seeds":
+                inv[item.item_id] -= 1
+                current_until = max(now, buffs.get("kudzu_until", 0.0))
+                buffs["kudzu_until"] = current_until + KUDZU_DURATION_SECONDS
+                await self.db.save()
+
+                rem = int(buffs["kudzu_until"] - now)
+                h = rem // 3600
+                await ctx.reply(
+                    f"🌿 **¡ESPARCISTE LAS SEMILLAS MÁGICAS DE KUDZU!**\n"
+                    f"Las enredaderas místicas se entrelazan a tu alrededor protegiendo tus almas.\n\n"
+                    f"⚡ **Efecto:** Recibirás **+50% de almas bonus** en cualquier Soul Drop que recojas.\n"
+                    f"⏳ **Duración restante:** {h} horas.\n"
+                    f"📦 Te quedan **{inv[item.item_id]}** semillas en la mochila."
+                )
+                return
+
+            elif item.item_id == "megaphone":
+                if not args or not args.strip():
+                    await ctx.reply(
+                        "📢 Para usar el megáfono debes incluir el mensaje a transmitir.\n"
+                        "Ejemplo: `%usar megaphone ¡Atención vecinos, vendo amuleto barato!`"
+                    )
+                    return
+
+                inv[item.item_id] -= 1
+                await self.db.save()
+
+                broadcast_msg = args.strip()
+                embed = discord.Embed(
+                    title="📢 ¡COMUNICADO DE CORNISA POR MEGÁFONO!",
+                    description=(
+                        f"Ivy enciende el altavoz en lo más alto del campanario y transmite las palabras de {ctx.author.mention}:\n\n"
+                        f"> *«{broadcast_msg}»*\n\n"
+                        f"*(Mensaje transmitido a todo Spanish Harlem)*"
+                    ),
+                    color=discord.Color.gold()
+                )
+                embed.set_footer(text=f"Anuncio emitido por {ctx.author.display_name} • Ivy Amplification System")
+                await ctx.send(content="@everyone 📢 ¡Atención al boletín de cornisa!", embed=embed)
+                return
+
+            elif item.item_id == "paradox_chrono":
+                ok, result = await self.execute_temporal_rewind(ctx.author.id)
+                if not ok:
+                    await ctx.reply(result)
+                    return
+
+                quote = random.choice(IVY_PARADOX_REWIND_QUOTES).format(
+                    amount=result["amount"],
+                    currency=CURRENCY_SYMBOL
+                )
+                embed = discord.Embed(
+                    title="⏳ ¡PARADOJA TEMPORAL: LÍNEA DE TIEMPO REBOBINADA!",
+                    description=(
+                        f"{quote}\n\n"
+                        f"🎲 **Tirada revertida:** {result['game']}\n"
+                        f"💵 **Almas actuales en mano:** **{result['wallet']:,} {CURRENCY_SYMBOL}**"
+                    ),
+                    color=discord.Color.purple()
+                )
+                embed.set_footer(text="El Cronómetro de Paradox se ha consumido en la fractura temporal.")
+                await ctx.reply(embed=embed)
+                return
+
+    @commands.command(name="rebobinar", aliases=["rewind"])
+    async def rebobinar(self, ctx: commands.Context):
+        """Rebobina tu última tirada o duelo fallido usando un Cronómetro de Paradox."""
+        ok, result = await self.execute_temporal_rewind(ctx.author.id)
+        if not ok:
+            await ctx.reply(result)
+            return
+
+        quote = random.choice(IVY_PARADOX_REWIND_QUOTES).format(
+            amount=result["amount"],
+            currency=CURRENCY_SYMBOL
+        )
+        embed = discord.Embed(
+            title="⏳ ¡PARADOJA TEMPORAL: LÍNEA DE TIEMPO REBOBINADA!",
+            description=(
+                f"{quote}\n\n"
+                f"🎲 **Tirada revertida:** {result['game']}\n"
+                f"💵 **Almas actuales en mano:** **{result['wallet']:,} {CURRENCY_SYMBOL}**"
+            ),
+            color=discord.Color.purple()
+        )
+        embed.set_footer(text="El Cronómetro de Paradox se ha consumido en la fractura temporal.")
+        await ctx.reply(embed=embed)
+
+    # --------------------------------------------------------------------------
+    #                 SISTEMA DE LOTERIA Y GRAN POZO DEL BARRIO
+    # --------------------------------------------------------------------------
+
+    @commands.command(name="loteria", aliases=["pozo", "jackpot", "loto"])
+    async def loteria(self, ctx: commands.Context):
+        """Muestra el panel del Gran Pozo y la Lotería de Spanish Harlem."""
+        embed = self.lottery.build_embed(ctx.author.id, ctx.guild)
+        await ctx.reply(embed=embed)
+
+    @commands.command(name="ticket", aliases=["tickets", "boletos", "comprarticket"])
+    async def ticket(self, ctx: commands.Context, cantidad: Optional[str] = "1"):
+        """Compra boletos para el sorteo semanal del Gran Pozo Comunitario."""
+        qty = 1
+        user_data = self.db.get_user_data(ctx.author.id)
+        wallet = user_data.get("wallet", 0)
+        lottery = self.lottery.get_lottery_data()
+        user_tickets = lottery.get("tickets", {}).get(str(ctx.author.id), 0)
+        available_quota = max(0, LOTTERY_MAX_TICKETS_PER_USER - user_tickets)
+
+        clean_qty = (cantidad or "1").lower().strip()
+        if clean_qty in ["all", "todo", "max"]:
+            max_by_wallet = wallet // LOTTERY_TICKET_PRICE
+            qty = min(available_quota, max_by_wallet)
+            if qty <= 0:
+                if available_quota <= 0:
+                    await ctx.reply(f"❌ Ya tienes el máximo de **{LOTTERY_MAX_TICKETS_PER_USER} tickets** permitidos por sorteo.")
+                else:
+                    await ctx.reply(f"❌ No te alcanza ni para 1 ticket ({LOTTERY_TICKET_PRICE:,} {CURRENCY_SYMBOL}).")
+                return
+        else:
+            try:
+                qty = int(clean_qty)
+            except ValueError:
+                await ctx.reply("❌ Ingresa un número válido de tickets o `max`.")
+                return
+
+        success, msg, total_user, current_jackpot = await self.lottery.buy_tickets(ctx.author.id, qty)
+        if not success:
+            await ctx.reply(msg)
+            return
+
+        embed = discord.Embed(
+            title="🎟️ ¡Boletos de Lotería Adquiridos!",
+            description=(
+                f"{msg}\n\n"
+                f"📊 **Tus boletos para el sorteo:** **{total_user} / {LOTTERY_MAX_TICKETS_PER_USER}**\n"
+                f"💰 **Pozo Acumulado:** **{current_jackpot:,} {CURRENCY_SYMBOL}**\n\n"
+                f"💡 *Revisa las probabilidades de todos los vecinos con `{ctx.prefix}loteria`.*"
+            ),
+            color=discord.Color.gold()
+        )
+        await ctx.reply(embed=embed)
+
+    @commands.command(name="sorteoloteria", aliases=["drawlottery", "sortear"])
+    @commands.has_permissions(administrator=True)
+    async def sorteoloteria(self, ctx: commands.Context):
+        """Ejecuta inmediatamente el sorteo del Gran Pozo (Solo Administradores)."""
+        await ctx.reply("🎰 Iniciando el sorteo del Gran Pozo de Spanish Harlem...")
+        await self._trigger_lottery_draw(ctx.channel)
+
     @commands.Cog.listener()
     async def on_ready(self):
         """Sincroniza el rol del más millonario al iniciar o reconectar el bot."""
@@ -452,10 +804,14 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 return
 
             # 2. Validación de Cooldown
+            buffs = user.setdefault("buffs", {})
+            is_coffee = buffs.get("coffee_until", 0.0) > now
+            effective_work_cd = COFFEE_WORK_COOLDOWN if is_coffee else WORK_COOLDOWN
+
             last_work = user.get("last_work", 0.0)
             elapsed = now - last_work
-            if elapsed < WORK_COOLDOWN:
-                remaining_cd = int(WORK_COOLDOWN - elapsed)
+            if elapsed < effective_work_cd:
+                remaining_cd = int(effective_work_cd - elapsed)
                 time_str = self._format_time(remaining_cd)
                 quote = random.choice(IVY_WORK_COOLDOWN_QUOTES).format(time=time_str)
                 embed = discord.Embed(
@@ -491,7 +847,11 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             description=desc,
             color=discord.Color.green()
         )
-        embed.set_footer(text=f"Ivy te espera para la próxima ronda en {WORK_COOLDOWN // 60} minutos.")
+        if is_coffee:
+            footer_text = f"Ivy te espera para la próxima ronda en {COFFEE_WORK_COOLDOWN} segundos. (☕ ¡Café de Carlos activo!)"
+        else:
+            footer_text = f"Ivy te espera para la próxima ronda en {WORK_COOLDOWN // 60} minutos."
+        embed.set_footer(text=footer_text)
         await ctx.reply(embed=embed)
 
         if ctx.guild:
@@ -522,6 +882,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
 
         lado_elegido = alias_map[eleccion_clean]
         user_id = ctx.author.id
+        now = time.time()
 
         async with self.db.lock:
             user = self.db.get_user_data(user_id)
@@ -558,6 +919,15 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             else:
                 user["wallet"] -= parsed_amount
                 user["stats"]["gambles_lost"] = user["stats"].get("gambles_lost", 0) + 1
+                user["last_loss"] = {
+                    "amount": parsed_amount,
+                    "game": f"Cara o Cruz ({resultado.upper()})",
+                    "timestamp": now,
+                    "reverted": False,
+                }
+                tax = max(1, int(parsed_amount * 0.01))
+                lottery = self.db.get_lottery_data()
+                lottery["jackpot"] = lottery.get("jackpot", LOTTERY_BASE_JACKPOT) + tax
 
                 quote = random.choice(IVY_COIN_LOSS_QUOTES).format(face=resultado.upper())
                 embed = discord.Embed(
@@ -584,7 +954,16 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 text=f"⚠️ [Magnate] Apuesta insuficiente para resetear inactividad. Mínimo: {req_bet:,} {CURRENCY_SYMBOL} ({int(MIN_RISK_BET_PERCENT * 100)}% de tu fortuna)."
             )
 
-        await ctx.reply(embed=embed)
+        coin_view = None
+        if resultado != lado_elegido:
+            inv = user.get("inventory", {})
+            if inv.get("paradox_chrono", 0) > 0:
+                coin_view = RewindView(self, user_id, parsed_amount)
+
+        if coin_view:
+            await ctx.reply(embed=embed, view=coin_view)
+        else:
+            await ctx.reply(embed=embed)
 
         if ctx.guild:
             leader_id, leader_wealth = self._top_leader_cache.get(ctx.guild.id, (0, 0))
@@ -611,6 +990,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
 
         color_elegido = RULETA_COLOR_MAP[color_clean]
         user_id = ctx.author.id
+        now = time.time()
 
         async with self.db.lock:
             user = self.db.get_user_data(user_id)
@@ -664,6 +1044,15 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             else:
                 user["wallet"] -= parsed_amount
                 user["stats"]["gambles_lost"] = user["stats"].get("gambles_lost", 0) + 1
+                user["last_loss"] = {
+                    "amount": parsed_amount,
+                    "game": f"Ruleta ({color_emoji} {resultado.upper()})",
+                    "timestamp": now,
+                    "reverted": False,
+                }
+                tax = max(1, int(parsed_amount * 0.01))
+                lottery = self.db.get_lottery_data()
+                lottery["jackpot"] = lottery.get("jackpot", LOTTERY_BASE_JACKPOT) + tax
 
                 quote = random.choice(IVY_RULETA_LOSS_QUOTES).format(
                     emoji=color_emoji, color=resultado.upper()
@@ -692,7 +1081,16 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 text=f"⚠️ [Magnate] Apuesta insuficiente para resetear inactividad. Mínimo: {req_bet:,} {CURRENCY_SYMBOL} ({int(MIN_RISK_BET_PERCENT * 100)}% de tu fortuna)."
             )
 
-        await ctx.reply(embed=embed)
+        ruleta_view = None
+        if resultado != color_elegido:
+            inv = user.get("inventory", {})
+            if inv.get("paradox_chrono", 0) > 0:
+                ruleta_view = RewindView(self, user_id, parsed_amount)
+
+        if ruleta_view:
+            await ctx.reply(embed=embed, view=ruleta_view)
+        else:
+            await ctx.reply(embed=embed)
 
         if ctx.guild:
             leader_id, leader_wealth = self._top_leader_cache.get(ctx.guild.id, (0, 0))
@@ -1095,27 +1493,90 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 )
                 return
 
+            # 4. Verificación de Amuleto de Piedra de la víctima (Defensa 100%)
+            victim_inv = victim_data.setdefault("inventory", {})
+            if victim_inv.get("stone_charm", 0) > 0:
+                victim_inv["stone_charm"] -= 1
+                robber["last_rob"] = now
+                robber["stats"]["times_robbed"] = robber["stats"].get("times_robbed", 0) + 1
+
+                # Ladrón atrapado y multado
+                robber["prison_until"] = now + PRISON_DURATION
+                multa_cobrada = min(robber["wallet"], ROB_FAIL_FINE)
+                robber["wallet"] -= multa_cobrada
+
+                # Verificar si el ladrón posee Fianza Policial
+                robber_inv = robber.setdefault("inventory", {})
+                used_bail = False
+                if robber_inv.get("bail_bond", 0) > 0:
+                    robber_inv["bail_bond"] -= 1
+                    robber["prison_until"] = 0.0
+                    used_bail = True
+
+                await self.db.save()
+
+                desc = (
+                    f"🪨 **¡EL AMULETO DE PIEDRA DE {victim.mention} BLOQUEÓ EL ASALTO!**\n\n"
+                    f"Al acercarte con sigilo, el amuleto de obsidiana de la víctima destelló con magia de gárgola "
+                    f"y te congeló las manos al 100%. ¡El amuleto se sacrificó pero la patrulla te cayó encima!\n\n"
+                    f"💸 **Multa policial:** -{multa_cobrada:,} {CURRENCY_SYMBOL}\n"
+                )
+                if used_bail:
+                    desc += "🚔 **¡Tu Fianza Policial te salvó!** Un abogado del barrio te sacó de la comisaría al instante sin cumplir condena."
+                else:
+                    desc += f"⛓️ **Condena:** {PRISON_DURATION // 60} minutos tras las rejas."
+
+                embed = discord.Embed(
+                    title="🛡️ ¡Defensa Gargolesca Absoluta!",
+                    description=desc,
+                    color=discord.Color.dark_purple()
+                )
+                embed.set_footer(text="Carlos always says: meterle la mano a quien lleva un amuleto es terminar en cana seguro.")
+                await ctx.reply(embed=embed)
+                return
+
             robber["last_rob"] = now
             robber["stats"]["times_robbed"] = robber["stats"].get("times_robbed", 0) + 1
+
+            # 5. Verificación de Guante de Cerrajero del ladrón
+            robber_inv = robber.setdefault("inventory", {})
+            used_lockpick = False
+            if robber_inv.get("lockpick", 0) > 0:
+                robber_inv["lockpick"] -= 1
+                effective_threshold = LOCKPICK_FAIL_THRESHOLD
+                used_lockpick = True
+            else:
+                effective_threshold = ROB_FAIL_THRESHOLD
 
             # Tirada de D20
             dado = random.randint(ROB_DICE_MIN, ROB_DICE_MAX)
 
-            if dado < ROB_FAIL_THRESHOLD:
+            if dado < effective_threshold:
                 # --- ROBO FALLIDO: CÁRCEL Y MULTA ---
                 robber["prison_until"] = now + PRISON_DURATION
                 multa_cobrada = min(robber["wallet"], ROB_FAIL_FINE)
                 robber["wallet"] -= multa_cobrada
+
+                # Verificar si el ladrón tiene Fianza Policial
+                used_bail = False
+                if robber_inv.get("bail_bond", 0) > 0:
+                    robber_inv["bail_bond"] -= 1
+                    robber["prison_until"] = 0.0
+                    used_bail = True
+
                 await self.db.save()
 
                 quote = random.choice(IVY_ROB_FAIL_QUOTES).format(
                     dice=dado,
-                    thresh=ROB_FAIL_THRESHOLD,
+                    thresh=effective_threshold,
                     victim=victim.mention,
                     duration=PRISON_DURATION // 60,
                     fine=multa_cobrada,
                     currency=CURRENCY_SYMBOL
                 )
+
+                if used_bail:
+                    quote += "\n\n🚔 **¡Fianza Policial activada!** Tu abogado tramitó tu liberación express y no pasas ni un segundo tras las rejas."
 
                 embed = discord.Embed(
                     title="🚔 ¡CANAZO DIRECTO! ¡LA POLICÍA TE ATRAPÓ!",
@@ -1135,15 +1596,19 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
 
                 quote = random.choice(IVY_ROB_SUCCESS_QUOTES).format(
                     dice=dado,
-                    thresh=ROB_FAIL_THRESHOLD,
+                    thresh=effective_threshold,
                     loot=botin,
                     currency=CURRENCY_SYMBOL,
                     victim=victim.mention
                 )
 
+                lockpick_note = ""
+                if used_lockpick:
+                    lockpick_note = f"\n🧤 *(Usaste un Guante de Cerrajero: umbral de fallo reducido a {LOCKPICK_FAIL_THRESHOLD})*"
+
                 embed = discord.Embed(
                     title="🥷 ¡GOLPE CALLEJERO CONSUMADO!",
-                    description=f"{quote}\n\n"
+                    description=f"{quote}{lockpick_note}\n\n"
                                 f"💵 **Bolsillo de {ctx.author.mention}:** {robber['wallet']:,} {CURRENCY_SYMBOL}\n"
                                 f"🥀 **Bolsillo de {victim.mention}:** {victim_data['wallet']:,} {CURRENCY_SYMBOL}",
                     color=discord.Color.green()
@@ -1154,6 +1619,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         if ctx.guild:
             leader_id, leader_wealth = self._top_leader_cache.get(ctx.guild.id, (0, 0))
             robber_total = robber["wallet"] + robber["bank"]
+            user_id = ctx.author.id
             if user_id == leader_id or victim.id == leader_id or robber_total >= leader_wealth:
                 await self.actualizar_rol_millonario(ctx.guild, announce_channel=ctx.channel)
 
@@ -1300,9 +1766,12 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         async with self.db.lock:
             all_users = self.db.get_all_users()
 
-            # Ordenar usuarios por patrimonio total (mano + banco)
-            sorted_users = sorted(
-                all_users.items(),
+            # Ordenar usuarios por patrimonio total (mano + banco), asegurando solo IDs de usuarios reales
+            sorted_users = [
+                (uid_str, data) for uid_str, data in all_users.items()
+                if uid_str.isdigit() and isinstance(data, dict)
+            ]
+            sorted_users.sort(
                 key=lambda item: item[1].get("wallet", 0) + item[1].get("bank", 0),
                 reverse=True
             )
@@ -1328,7 +1797,10 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         for uid_str, data in sorted_users:
             if rank_num > 10:
                 break
-            user_id = int(uid_str)
+            try:
+                user_id = int(uid_str)
+            except ValueError:
+                continue
             user_obj = ctx.guild.get_member(user_id) if ctx.guild else None
 
             # Si no estaba en caché, intentamos obtenerlo de la API de Discord para este servidor
