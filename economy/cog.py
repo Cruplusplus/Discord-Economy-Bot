@@ -882,6 +882,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
 
         lado_elegido = alias_map[eleccion_clean]
         user_id = ctx.author.id
+        now = time.time()
 
         async with self.db.lock:
             user = self.db.get_user_data(user_id)
@@ -954,7 +955,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             )
 
         coin_view = None
-        if resultado != eleccion_normalizada:
+        if resultado != lado_elegido:
             inv = user.get("inventory", {})
             if inv.get("paradox_chrono", 0) > 0:
                 coin_view = RewindView(self, user_id, parsed_amount)
@@ -989,6 +990,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
 
         color_elegido = RULETA_COLOR_MAP[color_clean]
         user_id = ctx.author.id
+        now = time.time()
 
         async with self.db.lock:
             user = self.db.get_user_data(user_id)
@@ -1080,7 +1082,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             )
 
         ruleta_view = None
-        if not acertado:
+        if resultado != color_elegido:
             inv = user.get("inventory", {})
             if inv.get("paradox_chrono", 0) > 0:
                 ruleta_view = RewindView(self, user_id, parsed_amount)

@@ -346,5 +346,42 @@ class TestShopAndLottery(unittest.TestCase):
 
         asyncio.run(run_rewind_tests())
 
+    def test_coin_and_ruleta_commands_execution(self):
+        from economy.cog import Economy
+        from unittest.mock import AsyncMock, MagicMock
+
+        class MockBot:
+            pass
+
+        cog = Economy(MockBot())
+        cog.db = self.db
+
+        async def run_game_tests():
+            # Setup user
+            user_id = 3001
+            user = self.db.get_user_data(user_id)
+            user["wallet"] = 10000
+            inv = get_user_inventory(user)
+            inv["paradox_chrono"] = 1
+
+            # Mock Context
+            ctx = MagicMock()
+            ctx.author.id = user_id
+            ctx.prefix = "%"
+            ctx.guild = None
+            ctx.reply = AsyncMock()
+
+            # Test 1: coin with 'x' (cruz) and 'all'
+            await cog.coin.callback(cog, ctx, "x", "all")
+            ctx.reply.assert_called()
+
+            # Test 2: ruleta with 'r' (rojo) and 'all'
+            user["wallet"] = 10000  # replenish
+            ctx.reply.reset_mock()
+            await cog.ruleta.callback(cog, ctx, "r", "all")
+            ctx.reply.assert_called()
+
+        asyncio.run(run_game_tests())
+
 if __name__ == "__main__":
     unittest.main()
