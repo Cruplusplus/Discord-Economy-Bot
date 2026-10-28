@@ -43,6 +43,8 @@ from .config import (
     MIN_RISK_BET_FLOOR,
     ROBIN_HOOD_MIN_WALLET,
     INACTIVITY_STAGE_1_HOURS,
+    BLACKJACK_PAYOUT_NORMAL,
+    BLACKJACK_PAYOUT_NATURAL,
 )
 from .lore import (
     IVY_WORK_ACTIVITIES,
@@ -55,10 +57,21 @@ from .lore import (
     IVY_RULETA_LOSS_QUOTES,
     IVY_ROB_FAIL_QUOTES,
     IVY_ROB_SUCCESS_QUOTES,
+    IVY_BLACKJACK_NATURAL_QUOTES,
+    IVY_BLACKJACK_PUSH_QUOTES,
+    IVY_BLACKJACK_LOSS_QUOTES,
 )
 from .database import DataManager
 from .events import EconomyEventsMixin
 from .duels import EconomyDuelsMixin
+from .blackjack import (
+    Deck,
+    Card,
+    calculate_hand,
+    is_natural_blackjack,
+    format_hand,
+    BlackjackView,
+)
 
 
 class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
@@ -75,6 +88,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         self.active_event: bool = False
         self._top_leader_cache: Dict[int, Tuple[int, int]] = {}
         self._not_in_guild_cache: Dict[int, set[int]] = {}
+        self.active_blackjacks: set[int] = set()
 
     # --------------------------------------------------------------------------
     #                         METODOS AUXILIARES
@@ -684,6 +698,188 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             leader_id, leader_wealth = self._top_leader_cache.get(ctx.guild.id, (0, 0))
             if user_id == leader_id or user_total >= leader_wealth:
                 await self.actualizar_rol_millonario(ctx.guild, announce_channel=ctx.channel)
+
+    # --------------------------------------------------------------------------
+    #                 COMANDO: BLACKJACK / 21 CALLEJERO
+    # --------------------------------------------------------------------------
+
+    @commands.command(name="blackjack", aliases=["bj", "21"])
+    async def blackjack(self, ctx: commands.Context, monto: str):
+        """Juegas al Blackjack (21) clandestino contra Ivy con botones interactivos."""
+        user_id = ctx.author.id
+
+        # 1. Validacion de Carcel
+        async with self.db.lock:
+            user = self.db.get_user_data(user_id)
+            in_prison, remaining_prison = self._is_in_prison(user)
+            if in_prison:
+                time_str = self._format_time(remaining_prison)
+                quote = random.choice(IVY_PRISON_WARNING_QUOTES).format(time=time_str)
+                embed = discord.Embed(
+                    title="🚨 ¡Estás en Cana, Chacho!",
+                    description=quote,
+                    color=discord.Color.red()
+                )
+                embed.set_footer(text="Ivy no deja jugar a las cartas a los presos.")
+                await ctx.reply(embed=embed)
+                return
+
+            # 2. Partida activa previa
+            if user_id in self.active_blackjacks:
+                await ctx.reply(
+                    "❌ ¡Ey, chacho! Ya tienes una mano de Blackjack abierta en la mesa. "
+                    "¡Termina esa partida antes de pedir más cartas!"
+                )
+                return
+
+            # 3. Validacion y descuento de apuesta inicial
+            wallet = user["wallet"]
+            parsed_amount = self._parse_amount(monto, wallet)
+            if parsed_amount is None:
+                await ctx.reply("❌ Pon un monto válido en números positivos o escribe `all`.")
+                return
+
+            if parsed_amount > wallet or parsed_amount == 0:
+                await ctx.reply(
+                    f"❌ ¡Te faltan almas en los bolsillos, chacho! Solo tienes **{wallet:,} {CURRENCY_SYMBOL}** en mano."
+                )
+                return
+
+            # Descontar apuesta inicial para evitar doble gasto
+            user["wallet"] -= parsed_amount
+            await self.db.save()
+
+        # Registrar partida activa
+        self.active_blackjacks.add(user_id)
+
+        # 4. Barajar y repartir cartas iniciales
+        deck = Deck()
+        player_hand = [deck.draw(), deck.draw()]
+        dealer_hand = [deck.draw(), deck.draw()]
+
+        player_natural = is_natural_blackjack(player_hand)
+        dealer_natural = is_natural_blackjack(dealer_hand)
+
+        # 5. Caso Blackjack Natural inmediato
+        if player_natural or dealer_natural:
+            self.active_blackjacks.discard(user_id)
+
+            async with self.db.lock:
+                user = self.db.get_user_data(user_id)
+
+                if player_natural and dealer_natural:
+                    # Empate de Blackjacks: devuelve apuesta
+                    user["wallet"] += parsed_amount
+                    await self.db.save()
+
+                    quote = random.choice(IVY_BLACKJACK_PUSH_QUOTES).format(total=21)
+                    embed = discord.Embed(
+                        title="⚖️ ¡Doble Blackjack! Empate en la Mesa (Push)",
+                        description=f"{quote}\n\n"
+                                    f"🔄 **Apuesta recuperada:** {parsed_amount:,} {CURRENCY_SYMBOL}\n"
+                                    f"💵 **Billetera:** {user['wallet']:,} {CURRENCY_SYMBOL}",
+                        color=discord.Color.light_grey()
+                    )
+                elif player_natural:
+                    # Victoria natural 3:2 (x2.5)
+                    ganancia = int(parsed_amount * (BLACKJACK_PAYOUT_NATURAL - 1.0))
+                    devolucion = parsed_amount + ganancia
+                    user["wallet"] += devolucion
+                    user["stats"]["gambles_won"] = user["stats"].get("gambles_won", 0) + 1
+
+                    # Evaluacion de riesgo
+                    user_total = user["wallet"] + user["bank"]
+                    is_richest, is_valid_reset, req_bet = self._evaluar_riesgo_apostador(
+                        user_id, parsed_amount, user_total, ctx.guild
+                    )
+                    if not is_richest or is_valid_reset:
+                        user["last_gamble"] = time.time()
+
+                    await self.db.save()
+
+                    quote = random.choice(IVY_BLACKJACK_NATURAL_QUOTES).format(
+                        payout=BLACKJACK_PAYOUT_NATURAL,
+                        profit=ganancia,
+                        symbol=CURRENCY_SYMBOL
+                    )
+                    embed = discord.Embed(
+                        title="✨ ¡¡BLACKJACK NATURAL EN LA CORNISA!! (x2.5)",
+                        description=f"{quote}\n\n"
+                                    f"🎉 **Ganancia neta:** +{ganancia:,} {CURRENCY_SYMBOL}\n"
+                                    f"💵 **Billetera actual:** {user['wallet']:,} {CURRENCY_SYMBOL}",
+                        color=discord.Color.gold()
+                    )
+                    if is_richest and not is_valid_reset:
+                        embed.set_footer(
+                            text=f"⚠️ [Magnate] Apuesta insuficiente para resetear inactividad. Mínimo: {req_bet:,} {CURRENCY_SYMBOL} ({int(MIN_RISK_BET_PERCENT * 100)}% de tu fortuna)."
+                        )
+                else:
+                    # Dealer natural gana
+                    user["stats"]["gambles_lost"] = user["stats"].get("gambles_lost", 0) + 1
+                    user_total = user["wallet"] + user["bank"]
+                    is_richest, is_valid_reset, req_bet = self._evaluar_riesgo_apostador(
+                        user_id, parsed_amount, user_total, ctx.guild
+                    )
+                    if not is_richest or is_valid_reset:
+                        user["last_gamble"] = time.time()
+
+                    await self.db.save()
+
+                    quote = random.choice(IVY_BLACKJACK_LOSS_QUOTES).format(
+                        player_total=calculate_hand(player_hand),
+                        dealer_total=21
+                    )
+                    embed = discord.Embed(
+                        title="💸 ¡Ivy Clavó Blackjack Natural!",
+                        description=f"{quote}\n\n"
+                                    f"💸 **Pérdida:** -{parsed_amount:,} {CURRENCY_SYMBOL}\n"
+                                    f"💵 **Te quedaron:** {user['wallet']:,} {CURRENCY_SYMBOL}",
+                        color=discord.Color.red()
+                    )
+                    if is_richest and not is_valid_reset:
+                        embed.set_footer(
+                            text=f"⚠️ [Magnate] Apuesta insuficiente para resetear inactividad. Mínimo: {req_bet:,} {CURRENCY_SYMBOL} ({int(MIN_RISK_BET_PERCENT * 100)}% de tu fortuna)."
+                        )
+
+            embed.add_field(
+                name=f"👤 Mano de {ctx.author.display_name} (21)" if player_natural else f"👤 Mano de {ctx.author.display_name} ({calculate_hand(player_hand)})",
+                value=format_hand(player_hand),
+                inline=False
+            )
+            embed.add_field(
+                name="🪨 Mano de Ivy - Crupier (21)" if dealer_natural else f"🪨 Mano de Ivy - Crupier ({calculate_hand(dealer_hand)})",
+                value=format_hand(dealer_hand),
+                inline=False
+            )
+            await ctx.reply(embed=embed)
+
+            if ctx.guild:
+                leader_id, leader_wealth = self._top_leader_cache.get(ctx.guild.id, (0, 0))
+                if user_id == leader_id or user_total >= leader_wealth:
+                    await self.actualizar_rol_millonario(ctx.guild, announce_channel=ctx.channel)
+            return
+
+        # 6. Partida interactiva con Botones de discord.ui.View
+        view = BlackjackView(
+            cog=self,
+            user=ctx.author,
+            guild=ctx.guild,
+            channel=ctx.channel,
+            bet=parsed_amount,
+            deck=deck,
+            player_hand=player_hand,
+            dealer_hand=dealer_hand,
+        )
+
+        initial_embed = view.build_embed(
+            title=f"🃏 Blackjack Callejero - Mano de {ctx.author.display_name}",
+            description="Tiramos paño en la cornisa. ¿Qué jugada vas a hacer, chacho?",
+            color=discord.Color.blue(),
+            hide_dealer=True
+        )
+
+        msg = await ctx.reply(embed=initial_embed, view=view)
+        view.message = msg
 
     # --------------------------------------------------------------------------
     #                   COMANDOS DE BANCO: DEPOSIT Y WITHDRAW
