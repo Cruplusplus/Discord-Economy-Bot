@@ -12,7 +12,7 @@ import discord
 from discord.ext import commands, tasks
 
 from .views import SoulDropView, RaidBossView, RiskRouletteView, RobinHoodView
-from .lore import IVY_TRIVIA_QUESTIONS
+from .lore import IVY_TRIVIA_QUESTIONS, IVY_LOTTERY_WIN_QUOTES
 from .config import (
     EVENT_MIN_INTERVAL_MINUTES,
     EVENT_MAX_INTERVAL_MINUTES,
@@ -51,6 +51,8 @@ from .config import (
     RICHEST_ANNOUNCE_CHANNEL_ID,
     RICHEST_DAILY_ANNOUNCE_TIME,
     RICHEST_ROLE_NAME,
+    LOTTERY_DRAW_TIME,
+    LOTTERY_DRAW_DAY,
 )
 
 
@@ -67,6 +69,8 @@ class EconomyEventsMixin:
             self.random_events_loop.start()
         if not self.daily_richest_announcement_loop.is_running():
             self.daily_richest_announcement_loop.start()
+        if not self.lottery_weekly_draw_loop.is_running():
+            self.lottery_weekly_draw_loop.start()
         try:
             await super().cog_load()
         except AttributeError:
@@ -76,10 +80,23 @@ class EconomyEventsMixin:
         """Cancela los loops periódicos al descargar el Cog."""
         self.random_events_loop.cancel()
         self.daily_richest_announcement_loop.cancel()
+        self.lottery_weekly_draw_loop.cancel()
         try:
             await super().cog_unload()
         except AttributeError:
             pass
+
+    @tasks.loop(time=LOTTERY_DRAW_TIME)
+    async def lottery_weekly_draw_loop(self):
+        """Loop semanal que ejecuta el sorteo del Gran Pozo los domingos."""
+        import datetime
+        now = datetime.datetime.now()
+        if now.weekday() == LOTTERY_DRAW_DAY:
+            await self._trigger_lottery_draw()
+
+    @lottery_weekly_draw_loop.before_loop
+    async def before_lottery_weekly_draw_loop(self):
+        await self.bot.wait_until_ready()
 
     @tasks.loop(time=RICHEST_DAILY_ANNOUNCE_TIME)
     async def daily_richest_announcement_loop(self):
@@ -420,6 +437,14 @@ class EconomyEventsMixin:
             if stolen_amount <= 0:
                 return
 
+            # Si la victima posee un Amuleto de Piedra, absorbe el 50% del robo y se consume
+            richest_inv = richest_data.setdefault("inventory", {})
+            stone_charm_used = False
+            if richest_inv.get("stone_charm", 0) > 0:
+                richest_inv["stone_charm"] -= 1
+                stolen_amount = max(1, int(round(stolen_amount * 0.5)))
+                stone_charm_used = True
+
             # Deducir de la billetera primero; si no alcanza, abrir la caja fuerte del banco
             if current_wallet >= stolen_amount:
                 richest_data["wallet"] -= stolen_amount
@@ -446,11 +471,16 @@ class EconomyEventsMixin:
 
         deadline = int(time.time() + DROP_TIMEOUT_SECONDS)
         view = RobinHoodView(self, richest_member, stolen_amount)
+        charm_notice = ""
+        if stone_charm_used:
+            charm_notice = f"\n🪨 **¡Amuleto de Piedra activado!** El amuleto de {richest_member.display_name} se sacrificó y absorbió el 50% del asalto.\n"
+
         embed = discord.Embed(
             title="🏹 ¡IMPUESTO A LA OPULENCIA: ROBIN HOOD CALLEJERO!",
             description=(
                 f"Ivy se coló silenciosa como gárgola en las propiedades de **{richest_member.mention}** y le sustrajo un **{int(ROBIN_HOOD_STEAL_PERCENTAGE * 100)}%** "
                 f"de su fortuna {origen_robo} por andar acaparando almas.\n"
+                f"{charm_notice}"
                 f"{motivo_inactividad}\n"
                 f"💰 **Bolsa redistribuida:** **{stolen_amount:,} {CURRENCY_NAME} {CURRENCY_SYMBOL}**\n"
                 f"🚫 **Restricción:** {richest_member.mention} no puede recoger su propia bolsa.\n"
@@ -547,6 +577,57 @@ class EconomyEventsMixin:
 
     # --- Comando de prueba para Owners ---
 
+    async def _trigger_lottery_draw(self, specific_channel: Optional[discord.abc.Messageable] = None):
+        """Ejecuta el sorteo oficial de la lotería y anuncia el ganador en el canal de economía."""
+        channel = specific_channel
+        guild = getattr(channel, "guild", None) if channel else None
+
+        if channel is None:
+            if ECONOMY_CHANNEL_ID:
+                for g in self.bot.guilds:
+                    ch = g.get_channel(ECONOMY_CHANNEL_ID)
+                    if ch:
+                        channel = ch
+                        guild = g
+                        break
+            if channel is None and self.bot.guilds:
+                guild = self.bot.guilds[0]
+                channel = guild.system_channel or next((c for c in guild.text_channels if c.permissions_for(guild.me).send_messages), None)
+
+        if not channel:
+            return
+
+        hubo_ganador, winner_member, jackpot, total_tickets = await self.lottery.draw_lottery(guild)
+
+        if hubo_ganador and winner_member:
+            quote = random.choice(IVY_LOTTERY_WIN_QUOTES).format(
+                jackpot=jackpot,
+                currency=CURRENCY_SYMBOL,
+                winner_mention=winner_member.mention
+            )
+            embed = discord.Embed(
+                title="🎰 ¡¡TENEMOS GANADOR DEL GRAN POZO COMUNITARIO!!",
+                description=quote,
+                color=discord.Color.gold()
+            )
+            embed.set_thumbnail(url=winner_member.display_avatar.url)
+            embed.add_field(name="💰 Premio Acreditado", value=f"**{jackpot:,} {CURRENCY_SYMBOL}**", inline=True)
+            embed.add_field(name="🎟️ Total de Tickets en Juego", value=f"**{total_tickets}**", inline=True)
+            embed.set_footer(text="El pozo se ha reiniciado con el fondo base municipal. ¡Ya podés comprar tickets para el próximo sorteo con '%ticket'!")
+            await channel.send(content=f"@everyone 🎉 ¡El bolillero de Spanish Harlem tiene ganador! {winner_member.mention} se llevó el pozo!", embed=embed)
+        else:
+            embed = discord.Embed(
+                title="🎰 Sorteo del Gran Pozo del Barrio",
+                description=(
+                    "¡Ivy hizo girar el bolillero de piedra en la cornisa, pero no había ningún boleto jugado esta semana!\n\n"
+                    f"💰 El pozo de **{jackpot:,} {CURRENCY_SYMBOL}** queda acumulado para el próximo sorteo.\n"
+                    f"¡Asegurá tus boletos con `%ticket <cantidad>`!"
+                ),
+                color=discord.Color.blue()
+            )
+            embed.set_footer(text="Carlos always says: la oportunidad favorece a la mente preparada (y al que compra el ticket).")
+            await channel.send(embed=embed)
+
     @commands.command(name="eventtest", hidden=True)
     @commands.is_owner()
     async def eventtest(self, ctx: commands.Context, tipo: Optional[str] = None):
@@ -561,6 +642,8 @@ class EconomyEventsMixin:
             "robin": self._trigger_robin_hood,
             "millonario": self._trigger_daily_richest_announcement,
             "magnate": self._trigger_daily_richest_announcement,
+            "loteria": self._trigger_lottery_draw,
+            "pozo": self._trigger_lottery_draw,
         }
 
         if tipo:

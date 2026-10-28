@@ -17,10 +17,25 @@ Bot de Discord temático inspirado en **Ivy de Deadlock**, diseñado para gestio
 ### 🎲 Apuestas y Minijuegos (Timba)
 - **Cara o Cruz (`%coin`):** Apuestas rápidas de doble o nada.
 - **Ruleta Callejera (`%ruleta`):** Apuesta a rojo, negro o al verde pleno (pago x14).
+- **Blackjack Clandestino (`%blackjack`):** Baraja francesa de 52 cartas contra Ivy con interfaz de botones (Pedir, Plantarse, Doblar) y pago 3:2 a Blackjack natural.
 - **Sistema de Duelos y Apuestas de Espectadores (`%duelo` / `%bet`):**
   - Desafía a otro miembro a un combate 1v1.
   - El servidor dispone de una ventana de tiempo para apostar por su combatiente preferido.
   - Pozo compartido y recompensas garantizadas incluso sin contra-apostantes.
+
+### 🛒 Tienda Callejera, Mercado Negro e Inventario (`%tienda`, `%inv`)
+Adquiere artilugios temáticos de Spanish Harlem calibrados para la economía del servidor:
+- **☕ Café del Diner de Carlos (2,500 almas):** Reduce el cooldown de `%work` a solo 15 segundos durante 30 minutos.
+- **🚔 Fianza Policial (5,000 almas):** Efecto pasivo. Te libera automáticamente de prisión al instante sin cumplir condena si un asalto o ruleta sale mal.
+- **🌿 Semillas de Kudzu (8,000 almas):** Concede +50% de almas extra al recoger cualquier Soul Drop durante 24 horas.
+- **🧤 Guante de Cerrajero (12,000 almas):** Efecto pasivo. Reduce el umbral de fallo de tu próximo `%rob` (de 12 a 8 en el d20), elevando tu éxito al 65%.
+- **🪨 Amuleto de Piedra (20,000 almas):** Escudo pasivo. Si intentan robarte con `%rob`, repele el asalto al 100%, envía al ladrón a prisión y se sacrifica. También absorbe el 50% de un asalto de Robin Hood.
+- **📢 Megáfono de Harlem (35,000 almas):** Emite un boletín de cornisa destacado con la voz de Ivy anunciado en el canal de economía.
+
+### 🎰 Gran Pozo Comunitario y Lotería Semanal (`%loteria`, `%ticket`)
+- Pozo base municipal garantizado (50,000 almas) que se incrementa con cada ticket comprado y un impuesto barrial del 1% en las pérdidas de casino (Ruleta, Coin, Blackjack).
+- **Regla Anti-Monopolio:** Máximo estricto de 10 tickets por vecino (2,000 almas c/u) para que los magnates no monopolicen el sorteo.
+- Sorteo automático todos los domingos a las 21:00 hs con bolillero ponderado y anuncios oficiales de Ivy.
 
 ### ⚡ Eventos Aleatorios Periódicos (Ivy's Street Events)
 El bot ejecuta un ciclo en segundo plano con intervalo dinámico e impredecible que activa eventos interactivos exclusivos en el canal de economía:
@@ -50,6 +65,8 @@ Discord Economy Bot/
     ├── database.py          # DataManager con escrituras atómicas (.tmp -> os.replace) y asyncio.Lock
     ├── views.py             # Interfaces interactivas (discord.ui.View) desacopladas
     ├── blackjack.py         # Blackjack clandestino (21): baraja, Ases dinámicos y botones View
+    ├── shop.py              # Tienda, mercado negro, inventario y menú desplegable (discord.ui.Select)
+    ├── lottery.py           # Administrador del Gran Pozo, compra con tope anti-monopolio y sorteo ponderado
     ├── duels.py             # EconomyDuelsMixin: combate 1v1, apuestas externas y liquidación
     ├── events.py            # EconomyEventsMixin: loop periódico @tasks.loop y eventos aleatorios
     └── cog.py               # Cog principal Economy (hereda mixins y expone comandos base)
@@ -149,6 +166,13 @@ python la_creatura_bot.py
 | `%blackjack <apuesta\|all\|half>` | `%bj`, `%21` | Juega al Blackjack (21) contra Ivy con botones (Pedir, Plantarse, Doblar). |
 | `%duelo <@usuario> <apuesta\|all\|half>` | `%duel` | Desafía a un usuario a un duelo a muerte por almas. |
 | `%bet <@combatiente> <monto\|all\|half>` | `%apostar` | Apuesta en un duelo activo durante el tiempo de apuestas. |
+| `%tienda` | `%shop`, `%mercado` | Abre el catálogo interactivo de la tienda y mercado negro con menú de compra. |
+| `%comprar <item> [cantidad]` | `%buy` | Compra directamente un artículo de la tienda por ID o alias. |
+| `%inv [@usuario]` | `%inventario`, `%mochila` | Consulta los artilugios resguardados y efectos temporales activos. |
+| `%usar <item> [mensaje]` | `%use` | Activa un consumible de tu inventario (café, semillas o megáfono). |
+| `%loteria` | `%pozo`, `%jackpot` | Consulta el pozo acumulado, tus boletos y probabilidades del sorteo semanal. |
+| `%ticket [cant\|all\|max]` | `%tickets`, `%boletos` | Compra boletos para la lotería (2,000 c/u, máx 10 por sorteo). |
+| `%sorteoloteria` | `%drawlottery`, `%sortear` | Ejecuta inmediatamente el sorteo del Gran Pozo (Solo Administradores). |
 
 > **Tip de Apuestas y Movimientos:** En cualquier comando que requiera un monto, puedes usar una cifra numérica, `all` / `todo` para el 100% de tus almas disponibles, o `half` / `mitad` para mover o apostar exactamente el 50%.
 | `%deadlock` | - | Lanza la señal de Deadlock con GIFs aleatorios. |
@@ -168,6 +192,7 @@ El bot incluye una consola interactiva en tiempo real que se ejecuta en segundo 
 | `bal <user_id>` | Muestra en terminal el balance y estado penal de un miembro. |
 | `unjail <user_id>` / `jail <user_id> [min]` | Libera o encarcela a un usuario inmediatamente. |
 | `event <drop\|trivia\|raid\|ruleta...>` | Dispara un evento en el canal oficial de economía. |
+| `lottery [info\|draw]` | Consulta el estado del pozo comunitario o ejecuta el sorteo manual. |
 | `servers` | Lista los servidores donde está conectado el bot. |
 | `channels [guild_id]` | Muestra los canales de texto disponibles y sus IDs. |
 | `help` | Despliega la ayuda de comandos de consola. |

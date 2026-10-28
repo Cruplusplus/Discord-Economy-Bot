@@ -317,6 +317,9 @@ class BlackjackView(discord.ui.View):
                 user_data["stats"]["gambles_won"] = user_data["stats"].get("gambles_won", 0) + 1
             elif outcome in ("loss", "player_bust"):
                 user_data["stats"]["gambles_lost"] = user_data["stats"].get("gambles_lost", 0) + 1
+                if hasattr(self.cog, "lottery") and self.cog.lottery:
+                    tax = max(1, int(self.bet * 0.01))
+                    await self.cog.lottery.add_to_jackpot(tax, acquire_lock=False)
 
             # Evaluacion en memoria del temporizador de Robin Hood ("Skin in the game")
             user_total = user_data.get("wallet", 0) + user_data.get("bank", 0)

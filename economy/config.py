@@ -118,6 +118,27 @@ DUEL_INVITE_TIMEOUT: int = _parse_int_env("DUEL_INVITE_TIMEOUT", 60)
 DUEL_UNOPPOSED_PROFIT_PERCENT: float = _parse_float_env("DUEL_UNOPPOSED_PROFIT_PERCENT", 0.5)
 GIPHY_API_KEY: str = os.getenv("GIPHY_API_KEY", "")
 
+# --- Tienda y Mercado Negro de Ivy ---
+ITEM_PRICE_COFFEE: int = _parse_int_env("ITEM_PRICE_COFFEE", 2500)
+ITEM_PRICE_BAIL_BOND: int = _parse_int_env("ITEM_PRICE_BAIL_BOND", 5000)
+ITEM_PRICE_KUDZU_SEEDS: int = _parse_int_env("ITEM_PRICE_KUDZU_SEEDS", 8000)
+ITEM_PRICE_LOCKPICK: int = _parse_int_env("ITEM_PRICE_LOCKPICK", 12000)
+ITEM_PRICE_STONE_CHARM: int = _parse_int_env("ITEM_PRICE_STONE_CHARM", 20000)
+ITEM_PRICE_MEGAPHONE: int = _parse_int_env("ITEM_PRICE_MEGAPHONE", 35000)
+
+COFFEE_WORK_COOLDOWN: int = _parse_int_env("COFFEE_WORK_COOLDOWN", 15)
+COFFEE_DURATION_SECONDS: int = _parse_int_env("COFFEE_DURATION_SECONDS", 1800)
+KUDZU_DURATION_SECONDS: int = _parse_int_env("KUDZU_DURATION_SECONDS", 86400)
+KUDZU_DROP_BONUS_PERCENT: float = _parse_float_env("KUDZU_DROP_BONUS_PERCENT", 0.50)
+LOCKPICK_FAIL_THRESHOLD: int = _parse_int_env("LOCKPICK_FAIL_THRESHOLD", 8)
+
+# --- Lotería y Pozo del Barrio ---
+LOTTERY_TICKET_PRICE: int = _parse_int_env("LOTTERY_TICKET_PRICE", 2000)
+LOTTERY_MAX_TICKETS_PER_USER: int = _parse_int_env("LOTTERY_MAX_TICKETS_PER_USER", 10)
+LOTTERY_BASE_JACKPOT: int = _parse_int_env("LOTTERY_BASE_JACKPOT", 50000)
+LOTTERY_DRAW_TIME: datetime.time = _parse_time_env("LOTTERY_DRAW_TIME", 21, 0)
+LOTTERY_DRAW_DAY: int = _parse_int_env("LOTTERY_DRAW_DAY", 6)
+
 # --- Archivo de Persistencia ---
 DATA_FILE_PATH: str = os.getenv("DATA_FILE_PATH", "stats.json")
 
