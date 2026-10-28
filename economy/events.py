@@ -5,6 +5,7 @@ los triggers para cada tipo de evento barrial y el comando owner '%eventtest'.
 """
 
 import time
+import datetime
 import random
 import asyncio
 from typing import Optional

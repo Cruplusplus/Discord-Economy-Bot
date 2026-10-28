@@ -1766,9 +1766,12 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         async with self.db.lock:
             all_users = self.db.get_all_users()
 
-            # Ordenar usuarios por patrimonio total (mano + banco)
-            sorted_users = sorted(
-                all_users.items(),
+            # Ordenar usuarios por patrimonio total (mano + banco), asegurando solo IDs de usuarios reales
+            sorted_users = [
+                (uid_str, data) for uid_str, data in all_users.items()
+                if uid_str.isdigit() and isinstance(data, dict)
+            ]
+            sorted_users.sort(
                 key=lambda item: item[1].get("wallet", 0) + item[1].get("bank", 0),
                 reverse=True
             )
@@ -1794,7 +1797,10 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         for uid_str, data in sorted_users:
             if rank_num > 10:
                 break
-            user_id = int(uid_str)
+            try:
+                user_id = int(uid_str)
+            except ValueError:
+                continue
             user_obj = ctx.guild.get_member(user_id) if ctx.guild else None
 
             # Si no estaba en caché, intentamos obtenerlo de la API de Discord para este servidor

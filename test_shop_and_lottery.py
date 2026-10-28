@@ -383,5 +383,44 @@ class TestShopAndLottery(unittest.TestCase):
 
         asyncio.run(run_game_tests())
 
+    def test_get_all_users_and_rank_with_metadata(self):
+        from economy.cog import Economy
+        from unittest.mock import AsyncMock, MagicMock
+
+        # Insert user accounts and metadata key like _lottery
+        u1 = self.db.get_user_data(4001)
+        u1["wallet"] = 25000
+        u2 = self.db.get_user_data(4002)
+        u2["wallet"] = 15000
+        lottery = self.db.get_lottery_data()
+        lottery["jackpot"] = 75000
+
+        # Verify get_all_users filters out _lottery
+        all_users = self.db.get_all_users()
+        self.assertNotIn("_lottery", all_users)
+        self.assertIn("4001", all_users)
+        self.assertIn("4002", all_users)
+        for k in all_users.keys():
+            self.assertTrue(k.isdigit())
+
+        # Test rank command directly
+        class MockBot:
+            pass
+
+        cog = Economy(MockBot())
+        cog.db = self.db
+
+        async def run_rank():
+            ctx = MagicMock()
+            ctx.author.id = 4001
+            ctx.guild = None
+            ctx.reply = AsyncMock()
+
+            # Calling rank must not raise ValueError
+            await cog.rank.callback(cog, ctx)
+            ctx.reply.assert_called()
+
+        asyncio.run(run_rank())
+
 if __name__ == "__main__":
     unittest.main()

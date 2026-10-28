@@ -212,10 +212,13 @@ class LotteryManager:
             buyer_lines = []
             for uid_str, count in sorted_buyers:
                 member_name = f"<@{uid_str}>"
-                if guild:
-                    m = guild.get_member(int(uid_str))
-                    if m:
-                        member_name = m.display_name
+                if guild and uid_str.isdigit():
+                    try:
+                        m = guild.get_member(int(uid_str))
+                        if m:
+                            member_name = m.display_name
+                    except ValueError:
+                        pass
                 buyer_lines.append(f"• **{member_name}**: {count} ticket(s) ({(count / total_tickets * 100):.1f}%)")
             embed.add_field(name="👥 Principales Apostadores", value="\n".join(buyer_lines), inline=False)
         else:

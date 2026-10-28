@@ -146,14 +146,17 @@ class DataManager:
         return lottery
 
     def get_all_users(self) -> Dict[str, Any]:
-        """Devuelve todos los registros de usuarios asegurando enteros."""
-        for udata in self._data.values():
-            if isinstance(udata, dict):
-                if "wallet" in udata and udata["wallet"] is not None:
-                    udata["wallet"] = int(round(udata["wallet"]))
-                if "bank" in udata and udata["bank"] is not None:
-                    udata["bank"] = int(round(udata["bank"]))
-        return self._data
+        """Devuelve todos los registros de usuarios reales asegurando enteros y filtrando metadatos."""
+        user_dict = {}
+        for uid_str, udata in self._data.items():
+            if not uid_str.isdigit() or not isinstance(udata, dict):
+                continue
+            if "wallet" in udata and udata["wallet"] is not None:
+                udata["wallet"] = int(round(udata["wallet"]))
+            if "bank" in udata and udata["bank"] is not None:
+                udata["bank"] = int(round(udata["bank"]))
+            user_dict[uid_str] = udata
+        return user_dict
 
     @property
     def lock(self) -> asyncio.Lock:
