@@ -146,10 +146,20 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         return f"{secs}s"
 
     def _parse_amount(self, amount_str: str, current_balance: int) -> Optional[int]:
-        """Parsea el monto ingresado admitiendo 'all' o 'todo' para mover el total como entero."""
+        """
+        Parsea el monto ingresado admitiendo:
+        - Enteros positivos (ej: 50, 1000)
+        - 'all', 'todo', 'max' para el 100% del saldo disponible
+        - 'half', 'mitad', 'medio', 'med', '1/2' para el 50% del saldo disponible
+        """
         amount_str = amount_str.strip().lower()
         if amount_str in ("all", "todo", "max"):
             return int(round(current_balance))
+        elif amount_str in ("half", "mitad", "medio", "med", "1/2"):
+            half_val = int(current_balance // 2)
+            if half_val <= 0:
+                return None
+            return half_val
 
         try:
             val = int(amount_str)
@@ -1154,6 +1164,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         if ctx.guild:
             leader_id, leader_wealth = self._top_leader_cache.get(ctx.guild.id, (0, 0))
             robber_total = robber["wallet"] + robber["bank"]
+            user_id = ctx.author.id
             if user_id == leader_id or victim.id == leader_id or robber_total >= leader_wealth:
                 await self.actualizar_rol_millonario(ctx.guild, announce_channel=ctx.channel)
 

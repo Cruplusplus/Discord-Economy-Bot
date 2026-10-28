@@ -139,16 +139,18 @@ python la_creatura_bot.py
 | :--- | :--- | :--- |
 | `%balance` | `%bal`, `%saldo`, `%dinero` | Consulta tus almas en mano y en la cornisa (banco). |
 | `%work` | `%trabajar`, `%chamba`, `%laburar` | Trabaja en el barrio para recolectar almas. |
-| `%dep <cantidad\|all>` | `%depositar`, `%guardar` | Guarda almas en el banco a salvo de robos. |
-| `%with <cantidad\|all>` | `%retirar`, `%sacar` | Retira almas del banco hacia tu mano. |
-| `%pay <@usuario> <cantidad>` | `%pagar`, `%transferir` | Transfiere almas a otro miembro del servidor. |
+| `%dep <cantidad\|all\|half>` | `%depositar`, `%guardar` | Guarda almas en el banco a salvo de robos. |
+| `%with <cantidad\|all\|half>` | `%retirar`, `%sacar` | Retira almas del banco hacia tu mano. |
+| `%pay <@usuario> <cantidad\|all\|half>` | `%pagar`, `%transferir` | Transfiere almas a otro miembro del servidor. |
 | `%rob <@usuario>` | `%robar`, `%afanar` | Intenta robarle almas en mano a un vecino. |
 | `%rank` | `%lb`, `%top`, `%ricos` | Muestra la tabla de líderes de la economía. |
-| `%coin <cara\|cruz> <apuesta>` | `%moneda`, `%flip` | Apuesta al lanzamiento de una moneda. |
-| `%ruleta <color> <apuesta>` | `%roulette` | Apuesta en la ruleta callejera (rojo, negro o verde). |
-| `%blackjack <apuesta>` | `%bj`, `%21` | Juega al Blackjack (21) contra Ivy con botones (Pedir, Plantarse, Doblar). |
-| `%duelo <@usuario> <apuesta>` | `%duel` | Desafía a un usuario a un duelo a muerte por almas. |
-| `%bet <@combatiente> <monto>` | `%apostar` | Apuesta en un duelo activo durante el tiempo de apuestas. |
+| `%coin <cara\|cruz> <apuesta\|all\|half>` | `%moneda`, `%flip` | Apuesta al lanzamiento de una moneda. |
+| `%ruleta <color> <apuesta\|all\|half>` | `%roulette` | Apuesta en la ruleta callejera (rojo, negro o verde). |
+| `%blackjack <apuesta\|all\|half>` | `%bj`, `%21` | Juega al Blackjack (21) contra Ivy con botones (Pedir, Plantarse, Doblar). |
+| `%duelo <@usuario> <apuesta\|all\|half>` | `%duel` | Desafía a un usuario a un duelo a muerte por almas. |
+| `%bet <@combatiente> <monto\|all\|half>` | `%apostar` | Apuesta en un duelo activo durante el tiempo de apuestas. |
+
+> **Tip de Apuestas y Movimientos:** En cualquier comando que requiera un monto, puedes usar una cifra numérica, `all` / `todo` para el 100% de tus almas disponibles, o `half` / `mitad` para mover o apostar exactamente el 50%.
 | `%deadlock` | - | Lanza la señal de Deadlock con GIFs aleatorios. |
 | `%gif <búsqueda>` | - | Busca y envía un GIF animado mediante la API de Giphy. |
 
