@@ -90,6 +90,12 @@ RULETA_COLOR_MAP = {
     "g": "verde", "green": "verde", "verde": "verde", "v": "verde"
 }
 
+# --- Apuesta: Blackjack Callejero (Blackjack) ---
+BLACKJACK_PAYOUT_NORMAL: float = _parse_float_env("BLACKJACK_PAYOUT_NORMAL", 2.0)
+BLACKJACK_PAYOUT_NATURAL: float = _parse_float_env("BLACKJACK_PAYOUT_NATURAL", 2.5)
+BLACKJACK_TIMEOUT_SECONDS: int = _parse_int_env("BLACKJACK_TIMEOUT_SECONDS", 60)
+BLACKJACK_DEALER_STAND: int = _parse_int_env("BLACKJACK_DEALER_STAND", 17)
+
 # --- Robo Callejero (Rob) ---
 ROB_COOLDOWN: int = _parse_int_env("ROB_COOLDOWN", 120)
 ROB_VICTIM_MIN_WALLET: int = _parse_int_env("ROB_VICTIM_MIN_WALLET", 20)

@@ -125,3 +125,42 @@ IVY_ROB_SUCCESS_QUOTES: List[str] = [
     "🤫 **¡AFANO SILENCIOSO!**\n🎲 Tirada maestra de **{dice}** (≥ {thresh}).\nNi cuenta se dio {victim} mientras le sacabas **+{loot:,} {currency}** de la campera. ¡Andá a esconderlo a la cornisa con `%deposit` antes de que se avive!",
     "🦅 **¡ZARPAZO DESDE EL TEJADO!**\n🎲 Tiraste un sólido **{dice}** (≥ {thresh}).\nBajaste en picada, le afanaste **+{loot:,} {currency}** a {victim} y remontaste el vuelo antes de que pudiera parpadear."
 ]
+
+
+IVY_BLACKJACK_WIN_QUOTES: List[str] = [
+    "¡Eso es jugar con cabeza, chacho! Carlos always says: cuando conoces el juego, la suerte es solo un detalle. ¡Victoria limpia!",
+    "¡Me ganaste con un total de **{player_total}** contra mi **{dealer_total}**! Te llevas esas almas bien merecidas a la bolsa.",
+    "¡Ja! Pareces gárgola de reflejos rápidos en la cornisa. La casa paga la apuesta, ¡felicidades!",
+    "¡Mano ganadora! Ivy no regala almas fácil, pero hoy te las ganaste con pura astucia."
+]
+
+IVY_BLACKJACK_NATURAL_QUOTES: List[str] = [
+    "¡¡BLACKJACK DIRECTO EN LA MESA!! As y figura desde el saque. Carlos always says: cuando la suerte te sonríe así en el callejón, no mires atrás. ¡Cobraste con bonus (x{payout})!",
+    "¡¡VEINTIUNO DE PRIMERA!! ¡Ni me diste tiempo a mover una pluma de piedra! Te llevas un premio de primera.",
+    "¡SANTO CIELO! ¡Blackjack servido! Las cartas cayeron perfectas desde lo alto de la catedral."
+]
+
+IVY_BLACKJACK_LOSS_QUOTES: List[str] = [
+    "La casa se plantó con **{dealer_total}** contra tu **{player_total}**. Las almas se quedan en la cornisa esta vez, chacho.",
+    "Uff... Me tocó mejor mano. Pero ey, en Spanish Harlem siempre hay revancha para los valientes.",
+    "Te faltó un empujón de suerte. La gárgola se queda con el pozo, ¡a afilar la puntería para la próxima!",
+    "Cerca, muy cerca... Pero mi **{dealer_total}** superó tu **{player_total}**. Hay que saber cuándo replegarse."
+]
+
+IVY_BLACKJACK_BUST_QUOTES: List[str] = [
+    "💥 **¡TE PASASTE DE 21! (Bust con {player_total})**\nTe fuiste al pasto por arriesgar de más, chacho. Las almas vuelan rápido cuando uno se ciega.",
+    "💥 **¡CRACK! ¡SE QUEBRÓ LA MANO!**\nSumaste **{player_total}** y te pasaste de largo. Carlos always says: la avaricia rompe el saco en la timba.",
+    "💥 **¡TE FUISTE DE LARGO!**\nPediste carta con agallas pero terminaste con **{player_total}**. Las fichas van directo para el nido de piedra."
+]
+
+IVY_BLACKJACK_DEALER_BUST_QUOTES: List[str] = [
+    "💥 **¡LA CASA QUEBRÓ!**\nFui a buscar una carta más y me pasé con **{dealer_total}**. ¡Te llevas tus almas y las mías también!",
+    "💥 **¡ME FUI AL PASTO!**\nSumé **{dealer_total}** intentando alcanzarte y rompí la baraja. ¡Victoria tuya por demolición!",
+    "💥 **¡QUEBRÉ!**\nLa codicia de gárgola me jugó en contra y terminé con **{dealer_total}**. ¡Almas de vuelta multiplicadas a tus bolsillos!"
+]
+
+IVY_BLACKJACK_PUSH_QUOTES: List[str] = [
+    "⚖️ **¡TABLAS! EMPATE CLAVADO EN {total}.**\nEn Spanish Harlem nadie le roba a nadie: recuperás tus almas íntegras.",
+    "⚖️ **¡EMPATE! ({total} a {total}).**\nCarlos always says: un empate no te llena el bolsillo, pero tampoco te deja en la lona. Tomá tu apuesta de vuelta.",
+    "⚖️ **¡MANOS IGUALADAS EN {total}!**\nNi para vos ni para mí. Las almas vuelven a tu cuenta tal cual vinieron."
+]

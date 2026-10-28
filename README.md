@@ -49,6 +49,7 @@ Discord Economy Bot/
     ├── lore.py              # Banco inmersivo de diálogos, citas de Ivy y preguntas de trivia
     ├── database.py          # DataManager con escrituras atómicas (.tmp -> os.replace) y asyncio.Lock
     ├── views.py             # Interfaces interactivas (discord.ui.View) desacopladas
+    ├── blackjack.py         # Blackjack clandestino (21): baraja, Ases dinámicos y botones View
     ├── duels.py             # EconomyDuelsMixin: combate 1v1, apuestas externas y liquidación
     ├── events.py            # EconomyEventsMixin: loop periódico @tasks.loop y eventos aleatorios
     └── cog.py               # Cog principal Economy (hereda mixins y expone comandos base)
@@ -145,6 +146,7 @@ python la_creatura_bot.py
 | `%rank` | `%lb`, `%top`, `%ricos` | Muestra la tabla de líderes de la economía. |
 | `%coin <cara\|cruz> <apuesta>` | `%moneda`, `%flip` | Apuesta al lanzamiento de una moneda. |
 | `%ruleta <color> <apuesta>` | `%roulette` | Apuesta en la ruleta callejera (rojo, negro o verde). |
+| `%blackjack <apuesta>` | `%bj`, `%21` | Juega al Blackjack (21) contra Ivy con botones (Pedir, Plantarse, Doblar). |
 | `%duelo <@usuario> <apuesta>` | `%duel` | Desafía a un usuario a un duelo a muerte por almas. |
 | `%bet <@combatiente> <monto>` | `%apostar` | Apuesta en un duelo activo durante el tiempo de apuestas. |
 | `%deadlock` | - | Lanza la señal de Deadlock con GIFs aleatorios. |
