@@ -54,6 +54,7 @@ from .config import (
     LOTTERY_BASE_JACKPOT,
     ITEM_PRICE_PARADOX_CHRONO,
     PARADOX_REWIND_WINDOW_SECONDS,
+    PARADOX_COOLDOWN_SECONDS,
 )
 from .lore import (
     IVY_WORK_ACTIVITIES,
@@ -444,6 +445,18 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             if inv.get("paradox_chrono", 0) <= 0:
                 return False, "❌ No tienes ningún **Cronómetro de Paradox** en tu mochila."
 
+            last_rewind = user_data.get("last_paradox_rewind", 0.0)
+            elapsed_cd = now - last_rewind
+            if elapsed_cd < PARADOX_COOLDOWN_SECONDS:
+                remaining_cd = int(PARADOX_COOLDOWN_SECONDS - elapsed_cd)
+                time_str = self._format_time(remaining_cd)
+                return False, (
+                    f"⏳ **¡SOBRECARGA TEMPORAL EN EL CRONÓMETRO!**\n"
+                    f"Carlos always says: no podés forzar al reloj a bailar a tu ritmo todo el día. "
+                    f"El cronómetro de Paradox necesita **24 horas** de reposo entre cada fractura temporal.\n\n"
+                    f"⚠️ Debes esperar **{time_str}** para volver a alterar la línea temporal."
+                )
+
             last_loss = user_data.get("last_loss")
             if not last_loss:
                 return False, "❌ No tienes ninguna tirada reciente registrada para rebobinar."
@@ -462,9 +475,10 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             if lost_amount <= 0:
                 return False, "❌ La tirada registrada no involucró pérdida de almas."
 
-            # Consumir 1 Cronómetro de Paradox y restaurar saldo
+            # Consumir 1 Cronómetro de Paradox, fijar cooldown y restaurar saldo
             inv["paradox_chrono"] -= 1
             user_data["wallet"] += lost_amount
+            user_data["last_paradox_rewind"] = now
             last_loss["reverted"] = True
 
             # Restar 1 derrota en estadísticas si aplica
@@ -957,7 +971,8 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         coin_view = None
         if resultado != lado_elegido:
             inv = user.get("inventory", {})
-            if inv.get("paradox_chrono", 0) > 0:
+            last_rewind = user.get("last_paradox_rewind", 0.0)
+            if inv.get("paradox_chrono", 0) > 0 and (now - last_rewind >= PARADOX_COOLDOWN_SECONDS):
                 coin_view = RewindView(self, user_id, parsed_amount)
 
         if coin_view:
@@ -1084,7 +1099,8 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         ruleta_view = None
         if resultado != color_elegido:
             inv = user.get("inventory", {})
-            if inv.get("paradox_chrono", 0) > 0:
+            last_rewind = user.get("last_paradox_rewind", 0.0)
+            if inv.get("paradox_chrono", 0) > 0 and (now - last_rewind >= PARADOX_COOLDOWN_SECONDS):
                 ruleta_view = RewindView(self, user_id, parsed_amount)
 
         if ruleta_view:

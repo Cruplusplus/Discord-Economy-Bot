@@ -22,6 +22,7 @@ from economy.config import (
     ITEM_PRICE_BAIL_BOND,
     ITEM_PRICE_PARADOX_CHRONO,
     PARADOX_REWIND_WINDOW_SECONDS,
+    PARADOX_COOLDOWN_SECONDS,
 )
 from economy.database import DataManager
 from economy.shop import (
@@ -311,7 +312,7 @@ class TestShopAndLottery(unittest.TestCase):
                 "reverted": False,
             }
 
-            # 1. Rebobinar con éxito dentro de la ventana de 120s
+            # 1. Rebobinar con éxito dentro de la ventana de 120s (primera vez, sin cooldown previo)
             ok, res = await cog.execute_temporal_rewind(2001)
             self.assertTrue(ok)
             self.assertEqual(res["amount"], 50000)
@@ -319,18 +320,35 @@ class TestShopAndLottery(unittest.TestCase):
             self.assertEqual(inv["paradox_chrono"], 0)
             self.assertTrue(user["last_loss"]["reverted"])
             self.assertEqual(user["stats"]["gambles_lost"], 0)
+            self.assertGreater(user["last_paradox_rewind"], 0.0)
 
-            # 2. Intento de re-rebobinar la misma tirada (debe fallar)
+            # 2. Intento de rebobinar de nuevo antes de que pasen las 24 horas (debe fallar por sobrecarga temporal)
             inv["paradox_chrono"] = 1
+            user["last_loss"] = {
+                "amount": 25000,
+                "game": "Ruleta (NEGRO)",
+                "timestamp": time.time(),
+                "reverted": False,
+            }
+            ok, err = await cog.execute_temporal_rewind(2001)
+            self.assertFalse(ok)
+            self.assertIn("SOBRECARGA TEMPORAL", err)
+            self.assertIn("24 horas", err)
+
+            # 3. Simular que transcurrieron las 24hs (cooldown superado)
+            user["last_paradox_rewind"] = now - (PARADOX_COOLDOWN_SECONDS + 10)
+
+            # 3a. Intento de re-rebobinar una tirada ya revertida (debe fallar)
+            user["last_loss"]["reverted"] = True
             ok, err = await cog.execute_temporal_rewind(2001)
             self.assertFalse(ok)
             self.assertIn("ya fue rebobinada", err)
 
-            # 3. Intento de rebobinar con tiempo expirado (>120s)
+            # 3b. Intento de rebobinar tirada expirada (>120s)
             user["last_loss"] = {
                 "amount": 30000,
                 "game": "Ruleta (ROJO)",
-                "timestamp": now - 300,  # 5 minutos atras
+                "timestamp": now - 300,  # 5 minutos atrás
                 "reverted": False,
             }
             ok, err = await cog.execute_temporal_rewind(2001)
@@ -343,6 +361,21 @@ class TestShopAndLottery(unittest.TestCase):
             ok, err = await cog.execute_temporal_rewind(2001)
             self.assertFalse(ok)
             self.assertIn("No tienes ningún", err)
+
+            # 5. Rebobinado exitoso tras haber transcurrido el cooldown de 24 horas
+            inv["paradox_chrono"] = 1
+            user["wallet"] = 80000
+            user["last_loss"] = {
+                "amount": 20000,
+                "game": "Blackjack",
+                "timestamp": time.time(),
+                "reverted": False,
+            }
+            ok, res = await cog.execute_temporal_rewind(2001)
+            self.assertTrue(ok)
+            self.assertEqual(res["amount"], 20000)
+            self.assertEqual(res["wallet"], 100000)
+            self.assertEqual(inv["paradox_chrono"], 0)
 
         asyncio.run(run_rewind_tests())
 

@@ -421,10 +421,13 @@ class BlackjackView(discord.ui.View):
             except discord.HTTPException:
                 pass
 
-        # Si el jugador perdio y tiene el Cronometro de Paradox, agregar boton de rebobinado
+        # Si el jugador perdio y tiene el Cronometro de Paradox, agregar boton de rebobinado si no esta en cooldown
         if outcome in ("loss", "player_bust"):
             inv = user_data.get("inventory", {})
-            if inv.get("paradox_chrono", 0) > 0:
+            last_rewind = user_data.get("last_paradox_rewind", 0.0)
+            now = time.time()
+            from .config import PARADOX_COOLDOWN_SECONDS
+            if inv.get("paradox_chrono", 0) > 0 and (now - last_rewind >= PARADOX_COOLDOWN_SECONDS):
                 self.clear_items()
                 from .views import RewindView
                 rewind_view = RewindView(self.cog, self.user_id, self.bet)

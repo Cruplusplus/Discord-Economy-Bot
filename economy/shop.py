@@ -18,6 +18,7 @@ from .config import (
     ITEM_PRICE_MEGAPHONE,
     ITEM_PRICE_PARADOX_CHRONO,
     COFFEE_DURATION_SECONDS,
+    PARADOX_COOLDOWN_SECONDS,
     KUDZU_DURATION_SECONDS,
 )
 
@@ -117,7 +118,7 @@ CATALOG: Dict[str, ShopItem] = {
         emoji="⏳",
         price=ITEM_PRICE_PARADOX_CHRONO,
         category="Especial",
-        description="Artefacto cronomántico de Paradox. Si pierdes en coin, ruleta, blackjack o duelo, rebobina el tiempo y recupera el 100% de las almas perdidas.",
+        description="Artefacto cronomántico de Paradox. Si pierdes en coin, ruleta, blackjack o duelo, rebobina el tiempo y recupera el 100% de las almas perdidas (1 uso cada 24hs).",
         usable=True,
         max_stack=2,
     ),
@@ -346,6 +347,12 @@ class InventoryView(discord.ui.View):
             rem = int(kudzu_until - now)
             buff_lines.append(f"🌿 **Bendición de Kudzu Activa:** +50% almas en Soul Drops (Resta: **{format_remaining_time(rem)}**)")
 
+        last_paradox = user_data.get("last_paradox_rewind", 0.0)
+        paradox_in_cd = (now - last_paradox) < PARADOX_COOLDOWN_SECONDS
+        if paradox_in_cd:
+            rem = int(PARADOX_COOLDOWN_SECONDS - (now - last_paradox))
+            buff_lines.append(f"⏳ **Sobrecarga de Paradox:** El cronómetro se está recalibrando (Disponible en: **{format_remaining_time(rem)}**)")
+
         if buff_lines:
             embed.add_field(name="⚡ Efectos Temporales Activos", value="\n".join(buff_lines), inline=False)
 
@@ -356,7 +363,11 @@ class InventoryView(discord.ui.View):
                 continue
             item = CATALOG.get(item_id)
             if item:
-                usar_hint = " — *(Escribe `%usar " + item.item_id + "`)*" if item.usable else " — *(Se activa solo cuando haga falta)*"
+                if item.item_id == "paradox_chrono" and paradox_in_cd:
+                    rem = int(PARADOX_COOLDOWN_SECONDS - (now - last_paradox))
+                    usar_hint = f" — *(En enfriamiento: listo en {format_remaining_time(rem)})*"
+                else:
+                    usar_hint = " — *(Escribe `%usar " + item.item_id + "`)*" if item.usable else " — *(Se activa solo cuando haga falta)*"
                 item_lines.append(f"{item.emoji} **{item.name}** x{count}{usar_hint}\n↳ *{item.description}*")
 
         if item_lines:

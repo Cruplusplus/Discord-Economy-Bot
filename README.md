@@ -31,7 +31,7 @@ Adquiere artilugios temáticos de Spanish Harlem calibrados para la economía de
 - **🧤 Guante de Cerrajero (12,000 almas):** Efecto pasivo. Reduce el umbral de fallo de tu próximo `%rob` (de 12 a 8 en el d20), elevando tu éxito al 65%.
 - **🪨 Amuleto de Piedra (20,000 almas):** Escudo pasivo. Si intentan robarte con `%rob`, repele el asalto al 100%, envía al ladrón a prisión y se sacrifica. También absorbe el 50% de un asalto de Robin Hood.
 - **📢 Megáfono de Harlem (35,000 almas):** Emite un boletín de cornisa destacado con la voz de Ivy anunciado en el canal de economía.
-- **⏳ Cronómetro de Paradox (45,000 almas):** Artefacto cronomántico de Paradox. Si pierdes una apuesta en `%coin`, `%ruleta`, `%blackjack` o `%duelo`, te permite rebobinar el tiempo (con botón interactivo en el mensaje de derrota o mediante `%rebobinar`) para anular la pérdida y recuperar el 100% de tus almas.
+- **⏳ Cronómetro de Paradox (45,000 almas):** Artefacto cronomántico de Paradox. Si pierdes una apuesta en `%coin`, `%ruleta`, `%blackjack` o `%duelo`, te permite rebobinar el tiempo (con botón interactivo en el mensaje de derrota o mediante `%rebobinar`) para anular la pérdida y recuperar el 100% de tus almas (cuenta con enfriamiento de 1 uso cada 24 horas para evitar abusos).
 
 ### 🎰 Gran Pozo Comunitario y Lotería Semanal (`%loteria`, `%ticket`)
 - Pozo base municipal garantizado (50,000 almas) que se incrementa con cada ticket comprado y un impuesto barrial del 1% en las pérdidas de casino (Ruleta, Coin, Blackjack).

@@ -89,6 +89,7 @@ class DataManager:
             "last_rob": 0.0,
             "prison_until": 0.0,
             "last_gamble": time.time(),
+            "last_paradox_rewind": 0.0,
             "inventory": {},
             "buffs": {},
             "stats": {
