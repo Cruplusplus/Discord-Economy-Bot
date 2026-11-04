@@ -465,6 +465,35 @@ async def kiss_error(ctx, error):
     if isinstance(error, commands.MemberNotFound):
         await ctx.send("No pude encontrar a ese usuario en el servidor.")
 
+
+@bot.command(name="paw")
+async def paw(ctx, miembro: discord.Member | None = None):
+
+    paw_gif = await obtener_gif(["snow", "leopard", "paw"])
+
+    if (miembro is None) or (miembro is bot.user) or (miembro.id is ctx.author.id):
+        await ctx.send(paw_gif)
+        return
+
+    emisor = ctx.author.mention
+    mentioned = miembro.mention
+    try:
+        await ctx.message.delete()
+    except discord.Forbidden:
+        pass
+    
+    if paw_gif:
+        embed = discord.Embed(
+            description=f"### {emisor} paws at {mentioned}",
+            color=discord.Color.from_rgb(255, 105, 180)
+        )
+        embed.set_image(url=paw_gif)
+        await ctx.send(content=mentioned, embed=embed)
+    else:
+        await ctx.send(f"{emisor} paws at {mentioned}")
+
+paw.help = "paws at you"
+
 if __name__ == "__main__":
     if not discord_api_key:
         print("❌ ERROR: No se encontró la variable DISCORD_TOKEN en el entorno ni en el archivo .env.")
