@@ -97,6 +97,21 @@ HOP_ON_DEADLOCK_LIST = [
     "https://tenor.com/vRHXq1DSIEo.gif",
     "https://tenor.com/mhM9dF6ldtV.gif",
     "https://tenor.com/view/initiate-calling-initiate-deadlock-initiate-deadlock-deadlock-initiate-gif-16764647892411421396",
+    "https://tenor.com/c2pSDEN28ho.gif"
+
+]
+
+LEPOARD_PAW_LIST = [
+    "https://tenor.com/e2L0Z7zIFPM.gif",
+    "https://tenor.com/jsbEyErwPC3.gif",
+    "https://tenor.com/lGAy0oRQHvO.gif",
+    "https://tenor.com/fWQ05thINZi.gif",
+    "https://tenor.com/nKIjeIDXlQN.gif",
+    "https://tenor.com/p8N8w6Xlrxb.gif",
+    "https://tenor.com/nDeHSLoWtlN.gif",
+    "https://tenor.com/jsbEyErwPC3.gif",
+    "https://tenor.com/bpHFT.gif",
+    "https://imgs.search.brave.com/9LCTvkUEGc-I_7Zfp1qKpe05AUMxr5ONly2u4w5t3Gw/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly9pLmt5/bS1jZG4uY29tL3Bo/b3Rvcy9pbWFnZXMv/bGlzdC8wMDMvMzM4/LzU5Ni84OWQ"
 
 ]
 
@@ -469,7 +484,11 @@ async def kiss_error(ctx, error):
 @bot.command(name="paw")
 async def paw(ctx, miembro: discord.Member | None = None):
 
-    paw_gif = await obtener_gif(["snow", "leopard", "paw"])
+    randNum = random.randint(1, 10)
+    if(randNum > 3):
+        paw_gif = random.choice(LEPOARD_PAW_LIST)
+    else:
+        paw_gif = await obtener_gif(["snow", "leopard", "paw"])
 
     if (miembro is None) or (miembro is bot.user) or (miembro.id is ctx.author.id):
         await ctx.send(paw_gif)
@@ -493,6 +512,11 @@ async def paw(ctx, miembro: discord.Member | None = None):
         await ctx.send(f"{emisor} paws at {mentioned}")
 
 paw.help = "paws at you"
+
+@paw.error
+async def paw_error(ctx, error):
+    if isinstance(error, commands.MemberNotFound):
+        await ctx.send("No pude encontrar a ese usuario en el servidor.")
 
 if __name__ == "__main__":
     if not discord_api_key:
