@@ -177,7 +177,9 @@ python la_creatura_bot.py
 | `%rebobinar` | `%rewind` | Rebobina tu última tirada o duelo perdido usando un Cronómetro de Paradox. |
 
 > **Tip de Apuestas y Movimientos:** En cualquier comando que requiera un monto, puedes usar una cifra numérica, `all` / `todo` para el 100% de tus almas disponibles, o `half` / `mitad` para mover o apostar exactamente el 50%.
-| `%deadlock` | - | Lanza la señal de Deadlock con GIFs aleatorios. |
+| `%deadlock` | `%dl` | Lanza la señal de Deadlock con GIFs aleatorios de Ivy. |
+| `%hop_on_deadlock` | - | Llama al servidor a jugar Deadlock con GIFs animados. |
+| `%paw` | - | Envía una imagen o GIF temático de patas de leopardo de las nieves. |
 | `%gif <búsqueda>` | - | Busca y envía un GIF animado mediante la API de Giphy. |
 
 ---
