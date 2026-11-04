@@ -97,7 +97,24 @@ HOP_ON_DEADLOCK_LIST = [
     "https://tenor.com/vRHXq1DSIEo.gif",
     "https://tenor.com/mhM9dF6ldtV.gif",
     "https://tenor.com/view/initiate-calling-initiate-deadlock-initiate-deadlock-deadlock-initiate-gif-16764647892411421396",
+    "https://tenor.com/c2pSDEN28ho.gif"
 
+]
+
+LEPOARD_PAW_LIST = [
+    "https://tenor.com/e2L0Z7zIFPM.gif",
+    "https://tenor.com/jsbEyErwPC3.gif",
+    "https://tenor.com/lGAy0oRQHvO.gif",
+    "https://tenor.com/fWQ05thINZi.gif",
+    "https://tenor.com/nKIjeIDXlQN.gif",
+    "https://tenor.com/p8N8w6Xlrxb.gif",
+    "https://tenor.com/nDeHSLoWtlN.gif",
+    "https://tenor.com/jsbEyErwPC3.gif",
+    "https://tenor.com/bpHFT.gif",
+    "https://imgs.search.brave.com/9LCTvkUEGc-I_7Zfp1qKpe05AUMxr5ONly2u4w5t3Gw/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly9pLmt5/bS1jZG4uY29tL3Bo/b3Rvcy9pbWFnZXMv/bGlzdC8wMDMvMzM4/LzU5Ni84OWQ",
+    "https://cdn.discordapp.com/attachments/1465586063044247593/1567627796438581268/images.png?ex=6aecdea7&is=6aeb8d27&hm=951bee94722dcdbb228cc59d76c407af84d8e50d0e7a25bd978121755857859f&",
+    "https://cdn.discordapp.com/attachments/1465586063044247593/1567627823668137984/images.png?ex=6aecdeae&is=6aeb8d2e&hm=d671a8aa4b2a4d950a6d4e2e19ebfb763bf2588e673bb2fbaaa923304cc7073b&",
+    "https://cdn.discordapp.com/attachments/1465586063044247593/1567627866135597097/images.png?ex=6aecdeb8&is=6aeb8d38&hm=02d3c542b00e083dc9e2cc0d1f2c2358b23b89496f14ebb45118539a96b060ae&,"
 ]
 
 ivy_tags = ["ivy", "deadlock"]
@@ -462,6 +479,44 @@ kiss.help = "le das un beso a alguien"
 
 @kiss.error
 async def kiss_error(ctx, error):
+    if isinstance(error, commands.MemberNotFound):
+        await ctx.send("No pude encontrar a ese usuario en el servidor.")
+
+
+@bot.command(name="paw")
+async def paw(ctx, miembro: discord.Member | None = None):
+
+    randNum = random.randint(1, 10)
+    if(randNum > 3):
+        paw_gif = random.choice(LEPOARD_PAW_LIST)
+    else:
+        paw_gif = await obtener_gif(["snow", "leopard", "paw"])
+
+    if (miembro is None) or (miembro is bot.user) or (miembro.id is ctx.author.id):
+        await ctx.send(paw_gif)
+        return
+
+    emisor = ctx.author.mention
+    mentioned = miembro.mention
+    try:
+        await ctx.message.delete()
+    except discord.Forbidden:
+        pass
+    
+    if paw_gif:
+        embed = discord.Embed(
+            description=f"### {emisor} paws at {mentioned}",
+            color=discord.Color.from_rgb(255, 105, 180)
+        )
+        embed.set_image(url=paw_gif)
+        await ctx.send(content=mentioned, embed=embed)
+    else:
+        await ctx.send(f"{emisor} paws at {mentioned}")
+
+paw.help = "paws at you"
+
+@paw.error
+async def paw_error(ctx, error):
     if isinstance(error, commands.MemberNotFound):
         await ctx.send("No pude encontrar a ese usuario en el servidor.")
 
