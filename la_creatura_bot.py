@@ -1,4 +1,5 @@
 import os
+import re
 import asyncio
 import aiohttp
 import random
@@ -90,6 +91,43 @@ async def obtener_gif(tags=None) -> str | None:
                         return elegido["images"]["original"]["url"]
     except Exception as e:
         print(f"Error al conectar con Giphy: {e}")
+
+    return None
+
+_media_url_cache = {}
+
+async def resolver_direct_gif_url(url: str) -> str | None:
+    """Resuelve URLs de Tenor u otros hosts a enlaces directos de imagen/gif para discord.Embed."""
+    if not url:
+        return None
+    url = url.rstrip(",").strip()
+    if url in _media_url_cache:
+        return _media_url_cache[url]
+
+    # Si es una página web de Tenor (no un CDN directo), extraer el enlace directo de og:image
+    if "tenor.com" in url and not any(k in url for k in ["media.tenor.com", "media1.tenor.com", "c.tenor.com"]):
+        try:
+            headers = {"User-Agent": "Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)"}
+            async with aiohttp.ClientSession(headers=headers) as session:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=4)) as resp:
+                    if resp.status == 200:
+                        html = await resp.text()
+                        og_img = re.findall(r"""<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']""", html)
+                        if not og_img:
+                            og_img = re.findall(r"""<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']""", html)
+                        if og_img:
+                            direct = og_img[0]
+                            _media_url_cache[url] = direct
+                            return direct
+        except Exception as e:
+            print(f"[PAW] Error resolviendo URL de Tenor: {e}")
+
+    # Si ya es un recurso multimedia directo válido
+    clean_path = url.lower().split("?")[0]
+    if any(clean_path.endswith(ext) for ext in [".gif", ".png", ".jpg", ".jpeg", ".webp"]):
+        if "cdn.discordapp.com" not in url and "imgs.search.brave.com" not in url:
+            _media_url_cache[url] = url
+            return url
 
     return None
 
@@ -412,14 +450,17 @@ async def kiss_error(ctx, error):
 
 @bot.command(name="paw")
 async def paw(ctx, miembro: discord.Member | None = None):
-
     randNum = random.randint(1, 10)
-    if(randNum > 3):
+    if randNum > 3:
         paw_gif = random.choice(LEPOARD_PAW_LIST)
     else:
         paw_gif = await obtener_gif(["snow", "leopard", "paw"])
 
-    if (miembro is None) or (miembro is bot.user) or (miembro.id is ctx.author.id):
+    if not paw_gif:
+        paw_gif = random.choice(LEPOARD_PAW_LIST)
+
+    # Si se invoca sin miembro, o mencionándose a sí mismo / al bot
+    if (miembro is None) or (miembro == bot.user) or (miembro.id == ctx.author.id):
         await ctx.send(paw_gif)
         return
 
@@ -429,16 +470,20 @@ async def paw(ctx, miembro: discord.Member | None = None):
         await ctx.message.delete()
     except discord.Forbidden:
         pass
-    
-    if paw_gif:
+
+    direct_url = await resolver_direct_gif_url(paw_gif)
+    if not direct_url:
+        direct_url = await obtener_gif(["snow", "leopard", "paw"])
+
+    if direct_url:
         embed = discord.Embed(
             description=f"### {emisor} paws at {mentioned}",
             color=discord.Color.from_rgb(255, 105, 180)
         )
-        embed.set_image(url=paw_gif)
+        embed.set_image(url=direct_url)
         await ctx.send(content=mentioned, embed=embed)
     else:
-        await ctx.send(f"{emisor} paws at {mentioned}")
+        await ctx.send(f"### {emisor} paws at {mentioned}\n{paw_gif}")
 
 paw.help = "paws at you"
 

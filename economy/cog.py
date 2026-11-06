@@ -589,6 +589,30 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             )
             return
 
+        # El Cronómetro de Paradox maneja su propia transacción atómica y lock en execute_temporal_rewind
+        if item.item_id == "paradox_chrono":
+            ok, result = await self.execute_temporal_rewind(ctx.author.id)
+            if not ok:
+                await ctx.reply(result)
+                return
+
+            quote = random.choice(IVY_PARADOX_REWIND_QUOTES).format(
+                amount=result["amount"],
+                currency=CURRENCY_SYMBOL
+            )
+            embed = discord.Embed(
+                title="⏳ ¡PARADOJA TEMPORAL: LÍNEA DE TIEMPO REBOBINADA!",
+                description=(
+                    f"{quote}\n\n"
+                    f"🎲 **Tirada revertida:** {result['game']}\n"
+                    f"💵 **Almas actuales en mano:** **{result['wallet']:,} {CURRENCY_SYMBOL}**"
+                ),
+                color=discord.Color.purple()
+            )
+            embed.set_footer(text="El Cronómetro de Paradox se ha consumido en la fractura temporal.")
+            await ctx.reply(embed=embed)
+            return
+
         now = time.time()
         async with self.db.lock:
             user_data = self.db.get_user_data(ctx.author.id)
@@ -657,29 +681,6 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 )
                 embed.set_footer(text=f"Anuncio emitido por {ctx.author.display_name} • Ivy Amplification System")
                 await ctx.send(content="@everyone 📢 ¡Atención al boletín de cornisa!", embed=embed)
-                return
-
-            elif item.item_id == "paradox_chrono":
-                ok, result = await self.execute_temporal_rewind(ctx.author.id)
-                if not ok:
-                    await ctx.reply(result)
-                    return
-
-                quote = random.choice(IVY_PARADOX_REWIND_QUOTES).format(
-                    amount=result["amount"],
-                    currency=CURRENCY_SYMBOL
-                )
-                embed = discord.Embed(
-                    title="⏳ ¡PARADOJA TEMPORAL: LÍNEA DE TIEMPO REBOBINADA!",
-                    description=(
-                        f"{quote}\n\n"
-                        f"🎲 **Tirada revertida:** {result['game']}\n"
-                        f"💵 **Almas actuales en mano:** **{result['wallet']:,} {CURRENCY_SYMBOL}**"
-                    ),
-                    color=discord.Color.purple()
-                )
-                embed.set_footer(text="El Cronómetro de Paradox se ha consumido en la fractura temporal.")
-                await ctx.reply(embed=embed)
                 return
 
     @commands.command(name="rebobinar", aliases=["rewind"])
