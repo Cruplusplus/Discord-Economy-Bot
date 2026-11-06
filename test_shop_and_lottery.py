@@ -496,18 +496,16 @@ class TestShopAndLottery(unittest.TestCase):
             ctx.send.assert_called()
             self.assertEqual(ctx.send.call_args.kwargs, {})
 
-            # 3. Mención a otro usuario (debe generar embed con imagen resuelta)
+            # 3. Mención a otro usuario (envío directo con formato markdown y URL sin embed para previsualización nativa)
             other = MagicMock()
             other.id = 67890
             other.mention = "<@67890>"
             ctx.send.reset_mock()
             await la_creatura_bot.paw.callback(ctx, other)
             ctx.send.assert_called()
-            kwargs = ctx.send.call_args.kwargs
-            self.assertIn("embed", kwargs)
-            embed = kwargs["embed"]
-            self.assertTrue(embed.image.url.startswith("https://"))
-            self.assertTrue(any(embed.image.url.endswith(ext) for ext in [".gif", ".png", ".jpg"]))
+            sent_msg = ctx.send.call_args[0][0]
+            self.assertIn("### <@12345> paws at <@67890>", sent_msg)
+            self.assertTrue(any(k in sent_msg for k in ["tenor.com", "giphy.com", "http"]))
 
         asyncio.run(run_paw())
 

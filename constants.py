@@ -71,19 +71,20 @@ HOP_ON_DEADLOCK_LIST: List[str] = [
     "https://tenor.com/c2pSDEN28ho.gif",
 ]
 
-# Lista de GIFs e imágenes de Snow Leopard para el comando %paw (enlaces directos y estables)
+# Lista de GIFs e imágenes de Snow Leopard para el comando %paw
 LEPOARD_PAW_LIST: List[str] = [
-    "https://media1.tenor.com/m/ONmRBy0yOnAAAAAd/mei-mei-meimei.gif",
-    "https://media1.tenor.com/m/bDbzOM321UMAAAAC/snep-snow-leopard.gif",
-    "https://media1.tenor.com/m/hjcpSgBYuWIAAAAC/snow-leopard-mei-mei.gif",
-    "https://media.tenor.com/Q2KtE2Yenz4AAAAM/snow-leopard-pawing-at-you-paws-at-you.gif",
-    "https://media1.tenor.com/m/nkkfs-k5WQcAAAAC/paws-paw.gif",
-    "https://media1.tenor.com/m/uht3WlPQc88AAAAd/snow-leopard-meimei-snow-leopard-mei-mei.gif",
-    "https://media1.tenor.com/m/nOGB6AMKh10AAAAC/snow-leopard-mei-mei.gif",
-    "https://media1.tenor.com/m/-lPo5PJU1vwAAAAC/screen-hello.gif",
-    "https://media1.tenor.com/m/9d-Q71c5GpUAAAAd/pawing-snow-leopard.gif",
-    "https://media1.tenor.com/m/RnPMlyssWe8AAAAC/sneptalktopaw.gif",
-    "https://media1.tenor.com/m/HkFI5M44SHUAAAAC/snow-leopard-snep.gif",
-    "https://media1.tenor.com/m/fydlCIrfxy4AAAAd/snow-leopard.gif",
+    "https://tenor.com/e2L0Z7zIFPM.gif",
+    "https://tenor.com/jsbEyErwPC3.gif",
+    "https://tenor.com/lGAy0oRQHvO.gif",
+    "https://tenor.com/fWQ05thINZi.gif",
+    "https://tenor.com/nKIjeIDXlQN.gif",
+    "https://tenor.com/p8N8w6Xlrxb.gif",
+    "https://tenor.com/nDeHSLoWtlN.gif",
+    "https://tenor.com/jsbEyErwPC3.gif",
+    "https://tenor.com/bpHFT.gif",
+    "https://imgs.search.brave.com/9LCTvkUEGc-I_7Zfp1qKpe05AUMxr5ONly2u4w5t3Gw/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly9pLmt5/bS1jZG4uY29tL3Bo/b3Rvcy9pbWFnZXMv/bGlzdC8wMDMvMzM4/LzU5Ni84OWQ",
+    "https://cdn.discordapp.com/attachments/1465586063044247593/1567627796438581268/images.png?ex=6aecdea7&is=6aeb8d27&hm=951bee94722dcdbb228cc59d76c407af84d8e50d0e7a25bd978121755857859f&",
+    "https://cdn.discordapp.com/attachments/1465586063044247593/1567627823668137984/images.png?ex=6aecdeae&is=6aeb8d2e&hm=d671a8aa4b2a4d950a6d4e2e19ebfb763bf2588e673bb2fbaaa923304cc7073b&",
+    "https://cdn.discordapp.com/attachments/1465586063044247593/1567627866135597097/images.png?ex=6aecdeb8&is=6aeb8d38&hm=02d3c542b00e083dc9e2cc0d1f2c2358b23b89496f14ebb45118539a96b060ae&",
 ]
 LEOPARD_PAW_LIST: List[str] = LEPOARD_PAW_LIST  # Alias con ortografía corregida
