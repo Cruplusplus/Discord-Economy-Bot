@@ -1,4 +1,5 @@
 import os
+import re
 import asyncio
 import aiohttp
 import random
@@ -92,6 +93,8 @@ async def obtener_gif(tags=None) -> str | None:
         print(f"Error al conectar con Giphy: {e}")
 
     return None
+
+
 
 
 def request_shutdown():
@@ -412,14 +415,17 @@ async def kiss_error(ctx, error):
 
 @bot.command(name="paw")
 async def paw(ctx, miembro: discord.Member | None = None):
-
     randNum = random.randint(1, 10)
-    if(randNum > 3):
+    if randNum > 3:
         paw_gif = random.choice(LEPOARD_PAW_LIST)
     else:
         paw_gif = await obtener_gif(["snow", "leopard", "paw"])
 
-    if (miembro is None) or (miembro is bot.user) or (miembro.id is ctx.author.id):
+    if not paw_gif:
+        paw_gif = random.choice(LEPOARD_PAW_LIST)
+
+    # Si se invoca sin miembro, o mencionándose a sí mismo / al bot
+    if (miembro is None) or (miembro == bot.user) or (miembro.id == ctx.author.id):
         await ctx.send(paw_gif)
         return
 
@@ -429,16 +435,8 @@ async def paw(ctx, miembro: discord.Member | None = None):
         await ctx.message.delete()
     except discord.Forbidden:
         pass
-    
-    if paw_gif:
-        embed = discord.Embed(
-            description=f"### {emisor} paws at {mentioned}",
-            color=discord.Color.from_rgb(255, 105, 180)
-        )
-        embed.set_image(url=paw_gif)
-        await ctx.send(content=mentioned, embed=embed)
-    else:
-        await ctx.send(f"{emisor} paws at {mentioned}")
+
+    await ctx.send(f"### {emisor} paws at {mentioned}\n{paw_gif}")
 
 paw.help = "paws at you"
 

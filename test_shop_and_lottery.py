@@ -377,6 +377,22 @@ class TestShopAndLottery(unittest.TestCase):
             self.assertEqual(res["wallet"], 100000)
             self.assertEqual(inv["paradox_chrono"], 0)
 
+            # 6. Prueba de comando %usar paradox sin tiradas previas (no debe congelar ni bloquear el lock de db)
+            from unittest.mock import AsyncMock, MagicMock
+            user2 = self.db.get_user_data(2002)
+            inv2 = get_user_inventory(user2)
+            inv2["paradox_chrono"] = 1
+            user2["last_loss"] = None
+
+            ctx_mock = MagicMock()
+            ctx_mock.author.id = 2002
+            ctx_mock.reply = AsyncMock()
+
+            # No debe bloquearse ni colgar el loop
+            await cog.usar.callback(cog, ctx_mock, "paradox")
+            ctx_mock.reply.assert_called_with("❌ No tienes ninguna tirada reciente registrada para rebobinar.")
+            self.assertFalse(cog.db.lock.locked(), "El lock de la base de datos debe quedar liberado")
+
         asyncio.run(run_rewind_tests())
 
     def test_coin_and_ruleta_commands_execution(self):
@@ -454,6 +470,44 @@ class TestShopAndLottery(unittest.TestCase):
             ctx.reply.assert_called()
 
         asyncio.run(run_rank())
+
+    def test_paw_command_execution(self):
+        import la_creatura_bot
+        from unittest.mock import AsyncMock, MagicMock
+
+        async def run_paw():
+            ctx = MagicMock()
+            ctx.author.id = 12345
+            ctx.author.mention = "<@12345>"
+            ctx.send = AsyncMock()
+            ctx.message.delete = AsyncMock()
+
+            # 1. Sin mención (envío directo del GIF en texto)
+            await la_creatura_bot.paw.callback(ctx, None)
+            ctx.send.assert_called()
+            sent_url = ctx.send.call_args[0][0]
+            self.assertTrue(any(ext in sent_url for ext in [".gif", "giphy", "tenor"]))
+
+            # 2. Auto-mención (miembro.id == ctx.author.id, no debe generar embed a sí mismo)
+            self_member = MagicMock()
+            self_member.id = 12345
+            ctx.send.reset_mock()
+            await la_creatura_bot.paw.callback(ctx, self_member)
+            ctx.send.assert_called()
+            self.assertEqual(ctx.send.call_args.kwargs, {})
+
+            # 3. Mención a otro usuario (envío directo con formato markdown y URL sin embed para previsualización nativa)
+            other = MagicMock()
+            other.id = 67890
+            other.mention = "<@67890>"
+            ctx.send.reset_mock()
+            await la_creatura_bot.paw.callback(ctx, other)
+            ctx.send.assert_called()
+            sent_msg = ctx.send.call_args[0][0]
+            self.assertIn("### <@12345> paws at <@67890>", sent_msg)
+            self.assertTrue(any(k in sent_msg for k in ["tenor.com", "giphy.com", "http"]))
+
+        asyncio.run(run_paw())
 
 if __name__ == "__main__":
     unittest.main()
