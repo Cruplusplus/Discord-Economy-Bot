@@ -501,8 +501,8 @@ class EconomyEventsMixin:
 
     # --- Anuncio diario del Más Millonario ---
 
-    async def _trigger_daily_richest_announcement(self, specific_channel: Optional[discord.abc.Messageable] = None):
-        """Publica el reporte diario del Más Millonario en el canal establecido."""
+    async def _trigger_daily_richest_announcement(self, specific_channel: Optional[discord.abc.Messageable] = None, force: bool = False):
+        """Publica el reporte diario del Más Millonario en el canal establecido exactamente una vez."""
         if specific_channel:
             guild = getattr(specific_channel, "guild", None)
             if guild:
@@ -512,16 +512,27 @@ class EconomyEventsMixin:
         if not RICHEST_ANNOUNCE_CHANNEL_ID:
             return
 
-        for guild in self.bot.guilds:
-            channel = guild.get_channel(RICHEST_ANNOUNCE_CHANNEL_ID)
-            if channel is None:
-                try:
-                    channel = await self.bot.fetch_channel(RICHEST_ANNOUNCE_CHANNEL_ID)
-                except Exception:
-                    channel = None
+        import datetime
+        today_str = datetime.date.today().isoformat()
+        if not force and getattr(self, "_last_daily_announcement_date", None) == today_str:
+            return
 
-            if channel is not None:
+        channel = self.bot.get_channel(RICHEST_ANNOUNCE_CHANNEL_ID)
+        if channel is None:
+            try:
+                channel = await self.bot.fetch_channel(RICHEST_ANNOUNCE_CHANNEL_ID)
+            except Exception as e:
+                print(f"[IVY ECONOMY] No se pudo encontrar el canal de anuncio del más millonario ({RICHEST_ANNOUNCE_CHANNEL_ID}): {e}")
+                channel = None
+
+        if channel is not None:
+            guild = getattr(channel, "guild", None)
+            if guild is None and self.bot.guilds:
+                guild = discord.utils.find(lambda g: g.get_channel(channel.id) is not None, self.bot.guilds) or self.bot.guilds[0]
+
+            if guild is not None:
                 await self._enviar_boletin_millonario(guild, channel)
+                self._last_daily_announcement_date = today_str
 
     async def _enviar_boletin_millonario(self, guild: discord.Guild, channel: discord.abc.Messageable):
         """Envía el embed diario con la voz de Ivy resumiendo quién es el Más Millonario."""
