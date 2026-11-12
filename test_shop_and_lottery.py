@@ -509,5 +509,60 @@ class TestShopAndLottery(unittest.TestCase):
 
         asyncio.run(run_paw())
 
+    def test_daily_richest_announcement_single_send(self):
+        from economy.cog import Economy
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        class MockBot:
+            def __init__(self):
+                self.guilds = []
+
+        mock_bot = MockBot()
+        cog = Economy(mock_bot)
+        cog.db = self.db
+
+        async def run_test():
+            u = self.db.get_user_data(5001)
+            u["wallet"] = 50000
+
+            guild1 = MagicMock()
+            guild1.id = 1
+            guild2 = MagicMock()
+            guild2.id = 2
+
+            mock_member = MagicMock()
+            mock_member.id = 5001
+            mock_member.display_name = "Magnate"
+            mock_member.mention = "<@5001>"
+            mock_member.display_avatar.url = "https://example.com/avatar.png"
+            mock_member.roles = []
+
+            announce_channel = MagicMock()
+            announce_channel.id = 99999
+            announce_channel.guild = guild1
+            announce_channel.send = AsyncMock()
+
+            mock_bot.guilds = [guild1, guild2]
+            mock_bot.get_channel = MagicMock(return_value=announce_channel)
+
+            cog._get_top_wealthy_member = AsyncMock(return_value=(mock_member, 50000))
+            cog.actualizar_rol_millonario = AsyncMock()
+            cog._get_richest_role = MagicMock(return_value=None)
+
+            with patch("economy.events.RICHEST_ANNOUNCE_CHANNEL_ID", 99999):
+                # 1. Primer envío: debe salir exactamente 1 sola vez
+                await cog._trigger_daily_richest_announcement()
+                self.assertEqual(announce_channel.send.call_count, 1)
+
+                # 2. Segundo intento en el mismo día: el guardián de fecha previene el duplicado
+                await cog._trigger_daily_richest_announcement()
+                self.assertEqual(announce_channel.send.call_count, 1)
+
+                # 3. Envío forzado: permite ejecución manual
+                await cog._trigger_daily_richest_announcement(force=True)
+                self.assertEqual(announce_channel.send.call_count, 2)
+
+        asyncio.run(run_test())
+
 if __name__ == "__main__":
     unittest.main()
