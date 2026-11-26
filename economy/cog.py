@@ -115,6 +115,11 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         self.active_blackjacks: set[int] = set()
         self.lottery = LotteryManager(self)
 
+    async def cog_load(self):
+        """Inicializa la base de datos al cargar el Cog."""
+        await self.db.initialize()
+        print("[IVY ECONOMY] Base de datos SQLite inicializada correctamente.")
+
     # --------------------------------------------------------------------------
     #                         METODOS AUXILIARES
     # --------------------------------------------------------------------------
@@ -251,7 +256,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             return None, 0
 
         async with self.db.lock:
-            all_users = self.db.get_all_users()
+            all_users = await self.db.get_all_users()
 
         # Filtrar y ordenar candidatos por patrimonio total descendente
         candidates = []
@@ -334,7 +339,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             await self._get_top_wealthy_member(guild)
 
         async with self.db.lock:
-            user_data = self.db.get_user_data(user_id)
+            user_data = await self.db.get_user_data(user_id)
             user_total = user_data.get("wallet", 0) + user_data.get("bank", 0)
 
             cached_leader_id, cached_wealth = self._top_leader_cache.get(guild.id, (0, 0))
@@ -423,7 +428,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
 
                 # Otorgar gracia de 24 horas al nuevo líder para que no herede inactividad previa
                 async with self.db.lock:
-                    new_leader_data = self.db.get_user_data(best_member.id)
+                    new_leader_data = await self.db.get_user_data(best_member.id)
                     new_leader_data["last_gamble"] = time.time()
                     await self.db.save()
             except discord.Forbidden:
@@ -440,7 +445,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         """Ejecuta el rebobinado de una tirada fallida usando el Cronómetro de Paradox."""
         now = time.time()
         async with self.db.lock:
-            user_data = self.db.get_user_data(user_id)
+            user_data = await self.db.get_user_data(user_id)
             inv = get_user_inventory(user_data)
             if inv.get("paradox_chrono", 0) <= 0:
                 return False, "❌ No tienes ningún **Cronómetro de Paradox** en tu mochila."
@@ -501,7 +506,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
     @commands.command(name="tienda", aliases=["shop", "mercado", "market"])
     async def tienda(self, ctx: commands.Context):
         """Abre el catálogo interactivo de la tienda y mercado negro de Spanish Harlem."""
-        user_data = self.db.get_user_data(ctx.author.id)
+        user_data = await self.db.get_user_data(ctx.author.id)
         view = ShopView(self, ctx.author)
         embed = view.build_embed(user_data)
         await ctx.reply(embed=embed, view=view)
@@ -523,7 +528,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             return
 
         async with self.db.lock:
-            user_data = self.db.get_user_data(ctx.author.id)
+            user_data = await self.db.get_user_data(ctx.author.id)
             wallet = user_data.get("wallet", 0)
             total_price = item.price * cantidad
 
@@ -569,7 +574,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
     async def inventario(self, ctx: commands.Context, target: Optional[discord.Member] = None):
         """Muestra la mochila con tus objetos y efectos temporales activos."""
         user = target or ctx.author
-        user_data = self.db.get_user_data(user.id)
+        user_data = await self.db.get_user_data(user.id)
         view = InventoryView(self, user)
         embed = view.build_embed(user_data)
         await ctx.reply(embed=embed)
@@ -615,7 +620,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
 
         now = time.time()
         async with self.db.lock:
-            user_data = self.db.get_user_data(ctx.author.id)
+            user_data = await self.db.get_user_data(ctx.author.id)
             inv = get_user_inventory(user_data)
             buffs = get_user_buffs(user_data)
             count = inv.get(item.item_id, 0)
@@ -714,16 +719,16 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
     @commands.command(name="loteria", aliases=["pozo", "jackpot", "loto"])
     async def loteria(self, ctx: commands.Context):
         """Muestra el panel del Gran Pozo y la Lotería de Spanish Harlem."""
-        embed = self.lottery.build_embed(ctx.author.id, ctx.guild)
+        embed = await self.lottery.build_embed_async(ctx.author.id, ctx.guild)
         await ctx.reply(embed=embed)
 
     @commands.command(name="ticket", aliases=["tickets", "boletos", "comprarticket"])
     async def ticket(self, ctx: commands.Context, cantidad: Optional[str] = "1"):
         """Compra boletos para el sorteo semanal del Gran Pozo Comunitario."""
         qty = 1
-        user_data = self.db.get_user_data(ctx.author.id)
-        wallet = user_data.get("wallet", 0)
-        lottery = self.lottery.get_lottery_data()
+        user_proxy = await self.db.get_user_data(ctx.author.id)
+        wallet = user_proxy.get("wallet", 0)
+        lottery = await self.lottery.get_lottery_data()
         user_tickets = lottery.get("tickets", {}).get(str(ctx.author.id), 0)
         available_quota = max(0, LOTTERY_MAX_TICKETS_PER_USER - user_tickets)
 
@@ -801,7 +806,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         user_id = ctx.author.id
 
         async with self.db.lock:
-            user = self.db.get_user_data(user_id)
+            user = await self.db.get_user_data(user_id)
             now = time.time()
 
             # 1. Validación de Cárcel
@@ -900,7 +905,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         now = time.time()
 
         async with self.db.lock:
-            user = self.db.get_user_data(user_id)
+            user = await self.db.get_user_data(user_id)
             wallet = user["wallet"]
 
             parsed_amount = self._parse_amount(monto, wallet)
@@ -941,7 +946,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                     "reverted": False,
                 }
                 tax = max(1, int(parsed_amount * 0.01))
-                lottery = self.db.get_lottery_data()
+                lottery = await self.db.get_lottery_data()
                 lottery["jackpot"] = lottery.get("jackpot", LOTTERY_BASE_JACKPOT) + tax
 
                 quote = random.choice(IVY_COIN_LOSS_QUOTES).format(face=resultado.upper())
@@ -1009,7 +1014,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         now = time.time()
 
         async with self.db.lock:
-            user = self.db.get_user_data(user_id)
+            user = await self.db.get_user_data(user_id)
             wallet = user["wallet"]
 
             parsed_amount = self._parse_amount(monto, wallet)
@@ -1067,7 +1072,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                     "reverted": False,
                 }
                 tax = max(1, int(parsed_amount * 0.01))
-                lottery = self.db.get_lottery_data()
+                lottery = await self.db.get_lottery_data()
                 lottery["jackpot"] = lottery.get("jackpot", LOTTERY_BASE_JACKPOT) + tax
 
                 quote = random.choice(IVY_RULETA_LOSS_QUOTES).format(
@@ -1125,7 +1130,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
 
         # 1. Validacion de Carcel
         async with self.db.lock:
-            user = self.db.get_user_data(user_id)
+            user = await self.db.get_user_data(user_id)
             in_prison, remaining_prison = self._is_in_prison(user)
             if in_prison:
                 time_str = self._format_time(remaining_prison)
@@ -1180,7 +1185,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             self.active_blackjacks.discard(user_id)
 
             async with self.db.lock:
-                user = self.db.get_user_data(user_id)
+                user = await self.db.get_user_data(user_id)
 
                 if player_natural and dealer_natural:
                     # Empate de Blackjacks: devuelve apuesta
@@ -1305,7 +1310,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         """Muestra el estado financiero entre tus bolsillos y el escondite en la cornisa."""
         user_id = ctx.author.id
         async with self.db.lock:
-            user = self.db.get_user_data(user_id)
+            user = await self.db.get_user_data(user_id)
             wallet = user["wallet"]
             bank_bal = user["bank"]
             total = wallet + bank_bal
@@ -1350,7 +1355,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         user_id = ctx.author.id
 
         async with self.db.lock:
-            user = self.db.get_user_data(user_id)
+            user = await self.db.get_user_data(user_id)
             wallet = user["wallet"]
 
             amount = self._parse_amount(monto, wallet)
@@ -1386,7 +1391,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         user_id = ctx.author.id
 
         async with self.db.lock:
-            user = self.db.get_user_data(user_id)
+            user = await self.db.get_user_data(user_id)
             bank_bal = user["bank"]
 
             amount = self._parse_amount(monto, bank_bal)
@@ -1434,7 +1439,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         if victim.bot:
             if victim_id == self.bot.user.id:
                 async with self.db.lock:
-                    robber = self.db.get_user_data(robber_id)
+                    robber = await self.db.get_user_data(robber_id)
                     attempts = robber["stats"].get("ivy_rob_attempts", 0) + 1
                     robber["stats"]["ivy_rob_attempts"] = attempts
 
@@ -1470,8 +1475,8 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             return
 
         async with self.db.lock:
-            robber = self.db.get_user_data(robber_id)
-            victim_data = self.db.get_user_data(victim_id)
+            robber = await self.db.get_user_data(robber_id)
+            victim_data = await self.db.get_user_data(victim_id)
             now = time.time()
 
             # 1. ¿El ladrón está preso?
@@ -1662,7 +1667,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             return
 
         async with self.db.lock:
-            sender = self.db.get_user_data(sender_id)
+            sender = await self.db.get_user_data(sender_id)
             wallet = sender["wallet"]
 
             amount = self._parse_amount(monto, wallet)
@@ -1676,7 +1681,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 )
                 return
 
-            receiver_data = self.db.get_user_data(receiver_id)
+            receiver_data = await self.db.get_user_data(receiver_id)
 
             sender["wallet"] -= amount
             receiver_data["wallet"] += amount
@@ -1708,7 +1713,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         """Consulta el estado financiero y penal de un vecino del barrio."""
         member = target or ctx.author
         async with self.db.lock:
-            user = self.db.get_user_data(member.id)
+            user = await self.db.get_user_data(member.id)
             wallet = user["wallet"]
             bank_bal = user["bank"]
             total = wallet + bank_bal
@@ -1741,7 +1746,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
     async def unjail(self, ctx: commands.Context, target: Optional[discord.Member] = None):
         member = target or ctx.author
         async with self.db.lock:
-            user = self.db.get_user_data(member.id)
+            user = await self.db.get_user_data(member.id)
             user["prison_until"] = 0
             await self.db.save()
 
@@ -1752,7 +1757,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         """Verifica la situación penal de un usuario en el calabozo municipal."""
         member = target or ctx.author
         async with self.db.lock:
-            user = self.db.get_user_data(member.id)
+            user = await self.db.get_user_data(member.id)
             in_prison, rem = self._is_in_prison(user)
 
         if in_prison:
@@ -1781,7 +1786,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         role = self._get_richest_role(ctx.guild) if ctx.guild else None
 
         async with self.db.lock:
-            all_users = self.db.get_all_users()
+            all_users = await self.db.get_all_users()
 
             # Ordenar usuarios por patrimonio total (mano + banco), asegurando solo IDs de usuarios reales
             sorted_users = [

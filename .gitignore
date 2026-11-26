@@ -6,6 +6,7 @@
 
 # Base de datos y persistencia local
 stats.json
+stats.db
 *.json.bak
 
 # Caché de Python y bytecode

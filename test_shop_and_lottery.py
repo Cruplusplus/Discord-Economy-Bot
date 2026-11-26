@@ -39,26 +39,29 @@ class DummyCog:
         self.db = db
 
 
-class TestShopAndLottery(unittest.TestCase):
-    def setUp(self):
+class TestShopAndLottery(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
         self.test_dir = tempfile.mkdtemp()
-        self.db_file = os.path.join(self.test_dir, "test_stats.json")
+        self.db_file = os.path.join(self.test_dir, "test_stats.db")  # .db extension for SQLite
+        self.json_file = os.path.join(self.test_dir, "stats.json")  # Separate JSON path (non-existent)
         self.db = DataManager(self.db_file)
+        self.db._json_path = self.json_file  # Point to non-existent JSON to skip migration
+        await self.db.initialize()
         self.cog = DummyCog(self.db)
         self.lottery = LotteryManager(self.cog)
         self.cog.lottery = self.lottery
 
-    def tearDown(self):
+    async def asyncTearDown(self):
         shutil.rmtree(self.test_dir)
 
-    def test_database_initialization(self):
-        user = self.db.get_user_data(12345)
+    async def test_database_initialization(self):
+        user = await self.db.get_user_data(12345)
         self.assertIn("inventory", user)
         self.assertIn("buffs", user)
         self.assertIsInstance(user["inventory"], dict)
         self.assertIsInstance(user["buffs"], dict)
 
-        lottery_data = self.db.get_lottery_data()
+        lottery_data = await self.db.get_lottery_data()
         self.assertEqual(lottery_data["jackpot"], LOTTERY_BASE_JACKPOT)
         self.assertEqual(lottery_data["tickets"], {})
 
@@ -79,9 +82,10 @@ class TestShopAndLottery(unittest.TestCase):
         self.assertEqual(get_item("megafono").item_id, "megaphone")
         self.assertIsNone(get_item("item_inexistente"))
 
-    def test_item_purchase_and_stack_limits(self):
-        user = self.db.get_user_data(100)
+    async def test_item_purchase_and_stack_limits(self):
+        user = await self.db.get_user_data(100)
         user["wallet"] = 50000
+        await self.db.save()
 
         item = get_item("stone_charm")
         self.assertIsNotNone(item)
@@ -94,16 +98,18 @@ class TestShopAndLottery(unittest.TestCase):
         cost = item.price * 1
         user["wallet"] -= cost
         inv[item.item_id] = inv.get(item.item_id, 0) + 1
+        await self.db.save()
         self.assertEqual(user["wallet"], 50000 - 20000)
         self.assertEqual(inv["stone_charm"], 1)
 
         # Límite máximo de stack (max_stack = 5 para stone_charm)
         inv[item.item_id] = 5
+        await self.db.save()
         self.assertEqual(inv["stone_charm"], item.max_stack)
         self.assertTrue(inv["stone_charm"] + 1 > item.max_stack)
 
-    def test_carlos_coffee_buff_and_cooldown(self):
-        user = self.db.get_user_data(200)
+    async def test_carlos_coffee_buff_and_cooldown(self):
+        user = await self.db.get_user_data(200)
         inv = get_user_inventory(user)
         buffs = get_user_buffs(user)
 
@@ -113,6 +119,7 @@ class TestShopAndLottery(unittest.TestCase):
         # Activar café
         inv["carlos_coffee"] -= 1
         buffs["coffee_until"] = now + COFFEE_DURATION_SECONDS
+        await self.db.save()
 
         self.assertEqual(inv["carlos_coffee"], 1)
         self.assertGreater(buffs["coffee_until"], now)
@@ -122,12 +129,13 @@ class TestShopAndLottery(unittest.TestCase):
         effective_cd = COFFEE_WORK_COOLDOWN if is_coffee else 300
         self.assertEqual(effective_cd, 15)
 
-    def test_kudzu_seeds_drop_bonus(self):
-        user = self.db.get_user_data(300)
+    async def test_kudzu_seeds_drop_bonus(self):
+        user = await self.db.get_user_data(300)
         buffs = get_user_buffs(user)
         now = time.time()
 
         buffs["kudzu_until"] = now + KUDZU_DURATION_SECONDS
+        await self.db.save()
         base_drop = 1000
 
         bonus = 0
@@ -137,14 +145,15 @@ class TestShopAndLottery(unittest.TestCase):
         self.assertEqual(bonus, 500)
         self.assertEqual(base_drop + bonus, 1500)
 
-    def test_stone_charm_defense_in_rob(self):
-        robber = self.db.get_user_data(400)
-        victim = self.db.get_user_data(500)
+    async def test_stone_charm_defense_in_rob(self):
+        robber = await self.db.get_user_data(400)
+        victim = await self.db.get_user_data(500)
 
         robber["wallet"] = 10000
         victim["wallet"] = 50000
         victim_inv = get_user_inventory(victim)
         victim_inv["stone_charm"] = 1
+        await self.db.save()
 
         now = time.time()
 
@@ -154,14 +163,15 @@ class TestShopAndLottery(unittest.TestCase):
             robber["prison_until"] = now + PRISON_DURATION
             multa = min(robber["wallet"], 3000)
             robber["wallet"] -= multa
+        await self.db.save()
 
         self.assertEqual(victim_inv["stone_charm"], 0)
         self.assertEqual(victim["wallet"], 50000)  # No perdio dinero
         self.assertEqual(robber["wallet"], 7000)   # Pago multa
         self.assertGreater(robber["prison_until"], now)
 
-    def test_bail_bond_auto_freedom(self):
-        robber = self.db.get_user_data(600)
+    async def test_bail_bond_auto_freedom(self):
+        robber = await self.db.get_user_data(600)
         robber_inv = get_user_inventory(robber)
         robber_inv["bail_bond"] = 1
 
@@ -173,14 +183,16 @@ class TestShopAndLottery(unittest.TestCase):
         if robber_inv.get("bail_bond", 0) > 0:
             robber_inv["bail_bond"] -= 1
             robber["prison_until"] = 0.0
+        await self.db.save()
 
         self.assertEqual(robber_inv["bail_bond"], 0)
         self.assertEqual(robber["prison_until"], 0.0)  # Libre al instante
 
-    def test_lockpick_threshold_reduction(self):
-        robber = self.db.get_user_data(700)
+    async def test_lockpick_threshold_reduction(self):
+        robber = await self.db.get_user_data(700)
         robber_inv = get_user_inventory(robber)
         robber_inv["lockpick"] = 1
+        await self.db.save()
 
         if robber_inv.get("lockpick", 0) > 0:
             robber_inv["lockpick"] -= 1
@@ -191,11 +203,12 @@ class TestShopAndLottery(unittest.TestCase):
         self.assertEqual(threshold, 8)
         self.assertEqual(robber_inv["lockpick"], 0)
 
-    def test_stone_charm_in_robin_hood(self):
-        magnate = self.db.get_user_data(800)
+    async def test_stone_charm_in_robin_hood(self):
+        magnate = await self.db.get_user_data(800)
         magnate["wallet"] = 100000
         magnate_inv = get_user_inventory(magnate)
         magnate_inv["stone_charm"] = 1
+        await self.db.save()
 
         stolen = 20000  # 20%
         if magnate_inv.get("stone_charm", 0) > 0:
@@ -205,70 +218,68 @@ class TestShopAndLottery(unittest.TestCase):
         self.assertEqual(stolen, 10000)  # Absorbió 50%
         self.assertEqual(magnate_inv["stone_charm"], 0)
 
-    def test_lottery_buy_tickets_and_cap(self):
-        async def run_test():
-            user = self.db.get_user_data(900)
-            user["wallet"] = 100000
+    async def test_lottery_buy_tickets_and_cap(self):
+        user = await self.db.get_user_data(900)
+        user["wallet"] = 100000
+        await self.db.save()
 
-            half_tix = max(1, LOTTERY_MAX_TICKETS_PER_USER // 2)
-            ok, msg, user_tix, pot = await self.lottery.buy_tickets(900, half_tix)
-            self.assertTrue(ok)
-            self.assertEqual(user_tix, half_tix)
-            self.assertEqual(user["wallet"], 100000 - (half_tix * LOTTERY_TICKET_PRICE))
-            self.assertEqual(pot, LOTTERY_BASE_JACKPOT + (half_tix * LOTTERY_TICKET_PRICE))
+        half_tix = max(1, LOTTERY_MAX_TICKETS_PER_USER // 2)
+        ok, msg, user_tix, pot = await self.lottery.buy_tickets(900, half_tix)
+        self.assertTrue(ok)
+        self.assertEqual(user_tix, half_tix)
+        # Recargar wallet del proxy
+        user = await self.db.get_user_data(900)
+        self.assertEqual(user["wallet"], 100000 - (half_tix * LOTTERY_TICKET_PRICE))
+        self.assertEqual(pot, LOTTERY_BASE_JACKPOT + (half_tix * LOTTERY_TICKET_PRICE))
 
-            # Intenta comprar más de los permitidos por el tope anti-monopolio
-            ok, msg, user_tix, pot = await self.lottery.buy_tickets(900, LOTTERY_MAX_TICKETS_PER_USER + 1)
-            self.assertFalse(ok)
-            self.assertIn("anti-monopolio", msg.lower())
+        # Intenta comprar más de los permitidos por el tope anti-monopolio
+        ok, msg, user_tix, pot = await self.lottery.buy_tickets(900, LOTTERY_MAX_TICKETS_PER_USER + 1)
+        self.assertFalse(ok)
+        self.assertIn("anti-monopolio", msg.lower())
 
-            # Compra los restantes para alcanzar el límite exacto
-            remaining = LOTTERY_MAX_TICKETS_PER_USER - half_tix
-            ok, msg, user_tix, pot = await self.lottery.buy_tickets(900, remaining)
-            self.assertTrue(ok)
-            self.assertEqual(user_tix, LOTTERY_MAX_TICKETS_PER_USER)
+        # Compra los restantes para alcanzar el límite exacto
+        remaining = LOTTERY_MAX_TICKETS_PER_USER - half_tix
+        ok, msg, user_tix, pot = await self.lottery.buy_tickets(900, remaining)
+        self.assertTrue(ok)
+        self.assertEqual(user_tix, LOTTERY_MAX_TICKETS_PER_USER)
 
-            # Intenta comprar 1 más teniendo el tope
-            ok, msg, user_tix, pot = await self.lottery.buy_tickets(900, 1)
-            self.assertFalse(ok)
+        # Intenta comprar 1 más teniendo el tope
+        ok, msg, user_tix, pot = await self.lottery.buy_tickets(900, 1)
+        self.assertFalse(ok)
 
-        asyncio.run(run_test())
+    async def test_lottery_draw_and_payout(self):
+        user1 = await self.db.get_user_data(1001)
+        user2 = await self.db.get_user_data(1002)
+        user1["wallet"] = 20000
+        user2["wallet"] = 20000
+        await self.db.save()
 
-    def test_lottery_draw_and_payout(self):
-        async def run_test():
-            user1 = self.db.get_user_data(1001)
-            user2 = self.db.get_user_data(1002)
-            user1["wallet"] = 20000
-            user2["wallet"] = 20000
+        await self.lottery.buy_tickets(1001, 3)
+        await self.lottery.buy_tickets(1002, 2)
 
-            await self.lottery.buy_tickets(1001, 3)
-            await self.lottery.buy_tickets(1002, 2)
+        lottery_data = await self.lottery.get_lottery_data()
+        pot_before = lottery_data["jackpot"]
+        self.assertEqual(pot_before, LOTTERY_BASE_JACKPOT + (5 * LOTTERY_TICKET_PRICE))
 
-            pot_before = self.lottery.get_lottery_data()["jackpot"]
-            self.assertEqual(pot_before, LOTTERY_BASE_JACKPOT + (5 * LOTTERY_TICKET_PRICE))
+        won, winner_member, jackpot_won, total_tix = await self.lottery.draw_lottery(guild=None)
+        self.assertTrue(won)
+        self.assertEqual(total_tix, 5)
+        self.assertEqual(jackpot_won, pot_before)
 
-            won, winner_member, jackpot_won, total_tix = await self.lottery.draw_lottery(guild=None)
-            self.assertTrue(won)
-            self.assertEqual(total_tix, 5)
-            self.assertEqual(jackpot_won, pot_before)
+        # Verificar que el pozo se reseteo al fondo base
+        lottery_after = await self.lottery.get_lottery_data()
+        self.assertEqual(lottery_after["jackpot"], LOTTERY_BASE_JACKPOT)
+        self.assertEqual(lottery_after["tickets"], {})
+        self.assertIsNotNone(lottery_after["last_winner"])
 
-            # Verificar que el pozo se reseteo al fondo base
-            lottery_after = self.lottery.get_lottery_data()
-            self.assertEqual(lottery_after["jackpot"], LOTTERY_BASE_JACKPOT)
-            self.assertEqual(lottery_after["tickets"], {})
-            self.assertIsNotNone(lottery_after["last_winner"])
-
-            # Uno de los dos gano
-            u1_wallet = self.db.get_user_data(1001)["wallet"]
-            u2_wallet = self.db.get_user_data(1002)["wallet"]
-            winner_id = lottery_after["last_winner"]["user_id"]
-            if winner_id == 1001:
-                self.assertEqual(u1_wallet, (20000 - 3 * LOTTERY_TICKET_PRICE) + jackpot_won)
-            else:
-                self.assertEqual(u2_wallet, (20000 - 2 * LOTTERY_TICKET_PRICE) + jackpot_won)
-
-        asyncio.run(run_test())
-
+        # Uno de los dos gano - recargar wallets
+        u1 = await self.db.get_user_data(1001)
+        u2 = await self.db.get_user_data(1002)
+        winner_id = lottery_after["last_winner"]["user_id"]
+        if winner_id == 1001:
+            self.assertEqual(u1["wallet"], (20000 - 3 * LOTTERY_TICKET_PRICE) + jackpot_won)
+        else:
+            self.assertEqual(u2["wallet"], (20000 - 2 * LOTTERY_TICKET_PRICE) + jackpot_won)
 
     def test_paradox_chrono_catalog_and_aliases(self):
         item = get_item("paradox_chrono")
@@ -285,117 +296,126 @@ class TestShopAndLottery(unittest.TestCase):
         self.assertEqual(get_item("rewind").item_id, "paradox_chrono")
         self.assertEqual(get_item("rebobinar").item_id, "paradox_chrono")
 
-    def test_paradox_chrono_rewind_logic(self):
+    async def test_paradox_chrono_rewind_logic(self):
         from economy.cog import Economy
 
-        # Crear un cog simulado con base de datos real
         class MockBot:
             pass
 
         cog = Economy(MockBot())
         cog.db = self.db
 
-        async def run_rewind_tests():
-            user = self.db.get_user_data(2001)
-            user["wallet"] = 100000
-            inv = get_user_inventory(user)
-            inv["paradox_chrono"] = 1
+        user = await self.db.get_user_data(2001)
+        user["wallet"] = 100000
+        inv = get_user_inventory(user)
+        inv["paradox_chrono"] = 1
+        await self.db.save()
 
-            # Simular pérdida de 50,000 en coin flip
-            user["wallet"] -= 50000
-            user["stats"]["gambles_lost"] = 1
-            now = time.time()
-            user["last_loss"] = {
-                "amount": 50000,
-                "game": "Cara o Cruz (CRUZ)",
-                "timestamp": now,
-                "reverted": False,
-            }
+        # Simular pérdida de 50,000 en coin flip
+        user["wallet"] -= 50000
+        user["stats"]["gambles_lost"] = 1
+        now = time.time()
+        user["last_loss"] = {
+            "amount": 50000,
+            "game": "Cara o Cruz (CRUZ)",
+            "timestamp": now,
+            "reverted": False,
+        }
+        await self.db.save()
 
-            # 1. Rebobinar con éxito dentro de la ventana de 120s (primera vez, sin cooldown previo)
-            ok, res = await cog.execute_temporal_rewind(2001)
-            self.assertTrue(ok)
-            self.assertEqual(res["amount"], 50000)
-            self.assertEqual(res["wallet"], 100000)
-            self.assertEqual(inv["paradox_chrono"], 0)
-            self.assertTrue(user["last_loss"]["reverted"])
-            self.assertEqual(user["stats"]["gambles_lost"], 0)
-            self.assertGreater(user["last_paradox_rewind"], 0.0)
+        # 1. Rebobinar con éxito dentro de la ventana de 120s (primera vez, sin cooldown previo)
+        ok, res = await cog.execute_temporal_rewind(2001)
+        self.assertTrue(ok)
+        self.assertEqual(res["amount"], 50000)
+        self.assertEqual(res["wallet"], 100000)
+        # Recargar inv
+        user = await self.db.get_user_data(2001)
+        inv = get_user_inventory(user)
+        self.assertEqual(inv.get("paradox_chrono", 0), 0)
+        self.assertTrue(user["last_loss"]["reverted"])
+        self.assertEqual(user["stats"]["gambles_lost"], 0)
+        self.assertGreater(user["last_paradox_rewind"], 0.0)
 
-            # 2. Intento de rebobinar de nuevo antes de que pasen las 24 horas (debe fallar por sobrecarga temporal)
-            inv["paradox_chrono"] = 1
-            user["last_loss"] = {
-                "amount": 25000,
-                "game": "Ruleta (NEGRO)",
-                "timestamp": time.time(),
-                "reverted": False,
-            }
-            ok, err = await cog.execute_temporal_rewind(2001)
-            self.assertFalse(ok)
-            self.assertIn("SOBRECARGA TEMPORAL", err)
-            self.assertIn("24 horas", err)
+        # 2. Intento de rebobinar de nuevo antes de que pasen las 24 horas (debe fallar por sobrecarga temporal)
+        inv["paradox_chrono"] = 1
+        user["last_loss"] = {
+            "amount": 25000,
+            "game": "Ruleta (NEGRO)",
+            "timestamp": time.time(),
+            "reverted": False,
+        }
+        await self.db.save()
+        ok, err = await cog.execute_temporal_rewind(2001)
+        self.assertFalse(ok)
+        self.assertIn("SOBRECARGA TEMPORAL", err)
+        self.assertIn("24 horas", err)
 
-            # 3. Simular que transcurrieron las 24hs (cooldown superado)
-            user["last_paradox_rewind"] = now - (PARADOX_COOLDOWN_SECONDS + 10)
+        # 3. Simular que transcurrieron las 24hs (cooldown superado)
+        user["last_paradox_rewind"] = now - (PARADOX_COOLDOWN_SECONDS + 10)
 
-            # 3a. Intento de re-rebobinar una tirada ya revertida (debe fallar)
-            user["last_loss"]["reverted"] = True
-            ok, err = await cog.execute_temporal_rewind(2001)
-            self.assertFalse(ok)
-            self.assertIn("ya fue rebobinada", err)
+        # 3a. Intento de re-rebobinar una tirada ya revertida (debe fallar)
+        user["last_loss"]["reverted"] = True
+        await self.db.save()
+        ok, err = await cog.execute_temporal_rewind(2001)
+        self.assertFalse(ok)
+        self.assertIn("ya fue rebobinada", err)
 
-            # 3b. Intento de rebobinar tirada expirada (>120s)
-            user["last_loss"] = {
-                "amount": 30000,
-                "game": "Ruleta (ROJO)",
-                "timestamp": now - 300,  # 5 minutos atrás
-                "reverted": False,
-            }
-            ok, err = await cog.execute_temporal_rewind(2001)
-            self.assertFalse(ok)
-            self.assertIn("se enfrió", err)
+        # 3b. Intento de rebobinar tirada expirada (>120s)
+        user["last_loss"] = {
+            "amount": 30000,
+            "game": "Ruleta (ROJO)",
+            "timestamp": now - 300,  # 5 minutos atrás
+            "reverted": False,
+        }
+        await self.db.save()
+        ok, err = await cog.execute_temporal_rewind(2001)
+        self.assertFalse(ok)
+        self.assertIn("se enfrió", err)
 
-            # 4. Intento sin tener el ítem en la mochila
-            inv["paradox_chrono"] = 0
-            user["last_loss"]["timestamp"] = time.time()
-            ok, err = await cog.execute_temporal_rewind(2001)
-            self.assertFalse(ok)
-            self.assertIn("No tienes ningún", err)
+        # 4. Intento sin tener el ítem en la mochila
+        inv["paradox_chrono"] = 0
+        user["last_loss"]["timestamp"] = time.time()
+        await self.db.save()
+        ok, err = await cog.execute_temporal_rewind(2001)
+        self.assertFalse(ok)
+        self.assertIn("No tienes ningún", err)
 
-            # 5. Rebobinado exitoso tras haber transcurrido el cooldown de 24 horas
-            inv["paradox_chrono"] = 1
-            user["wallet"] = 80000
-            user["last_loss"] = {
-                "amount": 20000,
-                "game": "Blackjack",
-                "timestamp": time.time(),
-                "reverted": False,
-            }
-            ok, res = await cog.execute_temporal_rewind(2001)
-            self.assertTrue(ok)
-            self.assertEqual(res["amount"], 20000)
-            self.assertEqual(res["wallet"], 100000)
-            self.assertEqual(inv["paradox_chrono"], 0)
+        # 5. Rebobinado exitoso tras haber transcurrido el cooldown de 24 horas
+        inv["paradox_chrono"] = 1
+        user["wallet"] = 80000
+        user["last_loss"] = {
+            "amount": 20000,
+            "game": "Blackjack",
+            "timestamp": time.time(),
+            "reverted": False,
+        }
+        await self.db.save()
+        ok, res = await cog.execute_temporal_rewind(2001)
+        self.assertTrue(ok)
+        self.assertEqual(res["amount"], 20000)
+        self.assertEqual(res["wallet"], 100000)
+        user = await self.db.get_user_data(2001)
+        inv = get_user_inventory(user)
+        self.assertEqual(inv.get("paradox_chrono", 0), 0)
 
-            # 6. Prueba de comando %usar paradox sin tiradas previas (no debe congelar ni bloquear el lock de db)
-            from unittest.mock import AsyncMock, MagicMock
-            user2 = self.db.get_user_data(2002)
-            inv2 = get_user_inventory(user2)
-            inv2["paradox_chrono"] = 1
-            user2["last_loss"] = None
+        # 6. Prueba de comando %usar paradox sin tiradas previas (no debe congelar ni bloquear el lock de db)
+        from unittest.mock import AsyncMock, MagicMock
+        user2 = await self.db.get_user_data(2002)
+        inv2 = get_user_inventory(user2)
+        inv2["paradox_chrono"] = 1
+        user2["last_loss"] = None
+        await self.db.save()
 
-            ctx_mock = MagicMock()
-            ctx_mock.author.id = 2002
-            ctx_mock.reply = AsyncMock()
+        ctx_mock = MagicMock()
+        ctx_mock.author.id = 2002
+        ctx_mock.reply = AsyncMock()
 
-            # No debe bloquearse ni colgar el loop
-            await cog.usar.callback(cog, ctx_mock, "paradox")
-            ctx_mock.reply.assert_called_with("❌ No tienes ninguna tirada reciente registrada para rebobinar.")
-            self.assertFalse(cog.db.lock.locked(), "El lock de la base de datos debe quedar liberado")
+        # No debe bloquearse ni colgar el loop
+        await cog.usar.callback(cog, ctx_mock, "paradox")
+        ctx_mock.reply.assert_called_with("❌ No tienes ninguna tirada reciente registrada para rebobinar.")
+        self.assertFalse(cog.db.lock.locked(), "El lock de la base de datos debe quedar liberado")
 
-        asyncio.run(run_rewind_tests())
-
-    def test_coin_and_ruleta_commands_execution(self):
+    async def test_coin_and_ruleta_commands_execution(self):
         from economy.cog import Economy
         from unittest.mock import AsyncMock, MagicMock
 
@@ -405,47 +425,46 @@ class TestShopAndLottery(unittest.TestCase):
         cog = Economy(MockBot())
         cog.db = self.db
 
-        async def run_game_tests():
-            # Setup user
-            user_id = 3001
-            user = self.db.get_user_data(user_id)
-            user["wallet"] = 10000
-            inv = get_user_inventory(user)
-            inv["paradox_chrono"] = 1
+        # Setup user
+        user_id = 3001
+        user = await self.db.get_user_data(user_id)
+        user["wallet"] = 10000
+        inv = get_user_inventory(user)
+        inv["paradox_chrono"] = 1
+        await self.db.save()
 
-            # Mock Context
-            ctx = MagicMock()
-            ctx.author.id = user_id
-            ctx.prefix = "%"
-            ctx.guild = None
-            ctx.reply = AsyncMock()
+        # Mock Context
+        ctx = MagicMock()
+        ctx.author.id = user_id
+        ctx.prefix = "%"
+        ctx.guild = None
+        ctx.reply = AsyncMock()
 
-            # Test 1: coin with 'x' (cruz) and 'all'
-            await cog.coin.callback(cog, ctx, "x", "all")
-            ctx.reply.assert_called()
+        # Test 1: coin with 'x' (cruz) and 'all'
+        await cog.coin.callback(cog, ctx, "x", "all")
+        ctx.reply.assert_called()
 
-            # Test 2: ruleta with 'r' (rojo) and 'all'
-            user["wallet"] = 10000  # replenish
-            ctx.reply.reset_mock()
-            await cog.ruleta.callback(cog, ctx, "r", "all")
-            ctx.reply.assert_called()
+        # Test 2: ruleta with 'r' (rojo) and 'all'
+        user = await self.db.get_user_data(user_id)
+        user["wallet"] = 10000  # replenish
+        await self.db.save()
+        ctx.reply.reset_mock()
+        await cog.ruleta.callback(cog, ctx, "r", "all")
+        ctx.reply.assert_called()
 
-        asyncio.run(run_game_tests())
-
-    def test_get_all_users_and_rank_with_metadata(self):
+    async def test_get_all_users_and_rank_with_metadata(self):
         from economy.cog import Economy
         from unittest.mock import AsyncMock, MagicMock
 
         # Insert user accounts and metadata key like _lottery
-        u1 = self.db.get_user_data(4001)
+        u1 = await self.db.get_user_data(4001)
         u1["wallet"] = 25000
-        u2 = self.db.get_user_data(4002)
+        u2 = await self.db.get_user_data(4002)
         u2["wallet"] = 15000
-        lottery = self.db.get_lottery_data()
-        lottery["jackpot"] = 75000
+        await self.db.save()
 
         # Verify get_all_users filters out _lottery
-        all_users = self.db.get_all_users()
+        all_users = await self.db.get_all_users()
         self.assertNotIn("_lottery", all_users)
         self.assertIn("4001", all_users)
         self.assertIn("4002", all_users)
@@ -459,57 +478,51 @@ class TestShopAndLottery(unittest.TestCase):
         cog = Economy(MockBot())
         cog.db = self.db
 
-        async def run_rank():
-            ctx = MagicMock()
-            ctx.author.id = 4001
-            ctx.guild = None
-            ctx.reply = AsyncMock()
+        ctx = MagicMock()
+        ctx.author.id = 4001
+        ctx.guild = None
+        ctx.reply = AsyncMock()
 
-            # Calling rank must not raise ValueError
-            await cog.rank.callback(cog, ctx)
-            ctx.reply.assert_called()
+        # Calling rank must not raise ValueError
+        await cog.rank.callback(cog, ctx)
+        ctx.reply.assert_called()
 
-        asyncio.run(run_rank())
-
-    def test_paw_command_execution(self):
+    async def test_paw_command_execution(self):
         import la_creatura_bot
         from unittest.mock import AsyncMock, MagicMock
 
-        async def run_paw():
-            ctx = MagicMock()
-            ctx.author.id = 12345
-            ctx.author.mention = "<@12345>"
-            ctx.send = AsyncMock()
-            ctx.message.delete = AsyncMock()
+        ctx = MagicMock()
+        ctx.author.id = 12345
+        ctx.author.mention = "<@12345>"
+        ctx.send = AsyncMock()
+        ctx.message.delete = AsyncMock()
 
-            # 1. Sin mención (envío directo del GIF en texto)
-            await la_creatura_bot.paw.callback(ctx, None)
-            ctx.send.assert_called()
-            sent_url = ctx.send.call_args[0][0]
-            self.assertTrue(any(ext in sent_url for ext in [".gif", "giphy", "tenor"]))
+        # 1. Sin mención (envío directo del GIF en texto)
+        await la_creatura_bot.paw.callback(ctx, None)
+        ctx.send.assert_called()
+        sent_url = ctx.send.call_args[0][0]
+        self.assertTrue(any(ext in sent_url for ext in [".gif", "giphy", "tenor", "discordapp.com", "cdn.discordapp.com", "brave.com"]))
 
-            # 2. Auto-mención (miembro.id == ctx.author.id, no debe generar embed a sí mismo)
-            self_member = MagicMock()
-            self_member.id = 12345
-            ctx.send.reset_mock()
-            await la_creatura_bot.paw.callback(ctx, self_member)
-            ctx.send.assert_called()
-            self.assertEqual(ctx.send.call_args.kwargs, {})
+        # 2. Auto-mención (miembro.id == ctx.author.id, no debe generar embed a sí mismo)
+        self_member = MagicMock()
+        self_member.id = 12345
+        ctx.send.reset_mock()
+        await la_creatura_bot.paw.callback(ctx, self_member)
+        ctx.send.assert_called()
+        self.assertEqual(ctx.send.call_args.kwargs, {})
 
-            # 3. Mención a otro usuario (envío directo con formato markdown y URL sin embed para previsualización nativa)
-            other = MagicMock()
-            other.id = 67890
-            other.mention = "<@67890>"
-            ctx.send.reset_mock()
-            await la_creatura_bot.paw.callback(ctx, other)
-            ctx.send.assert_called()
-            sent_msg = ctx.send.call_args[0][0]
-            self.assertIn("### <@12345> paws at <@67890>", sent_msg)
-            self.assertTrue(any(k in sent_msg for k in ["tenor.com", "giphy.com", "http"]))
+        # 3. Mención a otro usuario (envío directo con formato markdown y URL sin embed para previsualización nativa)
+        other = MagicMock()
+        other.id = 67890
+        other.mention = "<@67890>"
+        ctx.send.reset_mock()
+        await la_creatura_bot.paw.callback(ctx, other)
+        ctx.send.assert_called()
+        sent_msg = ctx.send.call_args[0][0]
+        self.assertIn("### <@12345> paws at <@67890>", sent_msg)
+        self.assertTrue(any(k in sent_msg for k in ["tenor.com", "giphy.com", "http"]))
 
-        asyncio.run(run_paw())
-
-    def test_daily_richest_announcement_single_send(self):
+    async def test_daily_richest_announcement_single_send(self):
         from economy.cog import Economy
         from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -521,48 +534,47 @@ class TestShopAndLottery(unittest.TestCase):
         cog = Economy(mock_bot)
         cog.db = self.db
 
-        async def run_test():
-            u = self.db.get_user_data(5001)
-            u["wallet"] = 50000
+        u = await self.db.get_user_data(5001)
+        u["wallet"] = 50000
+        await self.db.save()
 
-            guild1 = MagicMock()
-            guild1.id = 1
-            guild2 = MagicMock()
-            guild2.id = 2
+        guild1 = MagicMock()
+        guild1.id = 1
+        guild2 = MagicMock()
+        guild2.id = 2
 
-            mock_member = MagicMock()
-            mock_member.id = 5001
-            mock_member.display_name = "Magnate"
-            mock_member.mention = "<@5001>"
-            mock_member.display_avatar.url = "https://example.com/avatar.png"
-            mock_member.roles = []
+        mock_member = MagicMock()
+        mock_member.id = 5001
+        mock_member.display_name = "Magnate"
+        mock_member.mention = "<@5001>"
+        mock_member.display_avatar.url = "https://example.com/avatar.png"
+        mock_member.roles = []
 
-            announce_channel = MagicMock()
-            announce_channel.id = 99999
-            announce_channel.guild = guild1
-            announce_channel.send = AsyncMock()
+        announce_channel = MagicMock()
+        announce_channel.id = 99999
+        announce_channel.guild = guild1
+        announce_channel.send = AsyncMock()
 
-            mock_bot.guilds = [guild1, guild2]
-            mock_bot.get_channel = MagicMock(return_value=announce_channel)
+        mock_bot.guilds = [guild1, guild2]
+        mock_bot.get_channel = MagicMock(return_value=announce_channel)
 
-            cog._get_top_wealthy_member = AsyncMock(return_value=(mock_member, 50000))
-            cog.actualizar_rol_millonario = AsyncMock()
-            cog._get_richest_role = MagicMock(return_value=None)
+        cog._get_top_wealthy_member = AsyncMock(return_value=(mock_member, 50000))
+        cog.actualizar_rol_millonario = AsyncMock()
+        cog._get_richest_role = MagicMock(return_value=None)
 
-            with patch("economy.events.RICHEST_ANNOUNCE_CHANNEL_ID", 99999):
-                # 1. Primer envío: debe salir exactamente 1 sola vez
-                await cog._trigger_daily_richest_announcement()
-                self.assertEqual(announce_channel.send.call_count, 1)
+        with patch("economy.events.RICHEST_ANNOUNCE_CHANNEL_ID", 99999):
+            # 1. Primer envío: debe salir exactamente 1 sola vez
+            await cog._trigger_daily_richest_announcement()
+            self.assertEqual(announce_channel.send.call_count, 1)
 
-                # 2. Segundo intento en el mismo día: el guardián de fecha previene el duplicado
-                await cog._trigger_daily_richest_announcement()
-                self.assertEqual(announce_channel.send.call_count, 1)
+            # 2. Segundo intento en el mismo día: el guardián de fecha previene el duplicado
+            await cog._trigger_daily_richest_announcement()
+            self.assertEqual(announce_channel.send.call_count, 1)
 
-                # 3. Envío forzado: permite ejecución manual
-                await cog._trigger_daily_richest_announcement(force=True)
-                self.assertEqual(announce_channel.send.call_count, 2)
+            # 3. Envío forzado: permite ejecución manual
+            await cog._trigger_daily_richest_announcement(force=True)
+            self.assertEqual(announce_channel.send.call_count, 2)
 
-        asyncio.run(run_test())
 
 if __name__ == "__main__":
     unittest.main()

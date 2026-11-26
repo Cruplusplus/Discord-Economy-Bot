@@ -105,6 +105,7 @@ class ConsoleManager:
             "eventtest": self._cmd_event,
             "lottery": self._cmd_lottery,
             "pozo": self._cmd_lottery,
+            "migrate": self._cmd_migrate,
             "servers": self._cmd_servers,
             "guilds": self._cmd_servers,
             "channels": self._cmd_channels,
@@ -138,6 +139,7 @@ class ConsoleManager:
 - unjail <user_id>                   : Libera a un usuario de prision
 - jail <user_id> [minutos]           : Envia a prision a un usuario
 - lottery [info|draw]                : Consulta estado del pozo o ejecuta el sorteo
+- migrate [json_path]                : Migra datos desde JSON legacy a SQLite
 - event <drop|trivia|raid|etc>       : Dispara un evento en el canal oficial
 - servers                            : Lista los servidores donde esta el bot
 - channels [guild_id]                : Lista los canales de texto disponibles
@@ -208,10 +210,10 @@ class ConsoleManager:
             return
 
         async with economy_cog.db.lock:
-            user_data = economy_cog.db.get_user_data(user_id)
-            current_val = user_data.get(target_type, 0)
+            user_proxy = await economy_cog.db.get_user_data(user_id)
+            current_val = user_proxy.get(target_type, 0)
             new_val = max(0, current_val + amount)
-            user_data[target_type] = new_val
+            user_proxy[target_type] = new_val
             await economy_cog.db.save()
 
         # Sincronizar rol de millonario en los servidores del usuario
@@ -242,17 +244,17 @@ class ConsoleManager:
             return
 
         async with economy_cog.db.lock:
-            user_data = economy_cog.db.get_user_data(user_id)
-            user_data["wallet"] = max(0, new_wallet)
+            user_proxy = await economy_cog.db.get_user_data(user_id)
+            user_proxy["wallet"] = max(0, new_wallet)
             if new_bank is not None:
-                user_data["bank"] = max(0, new_bank)
+                user_proxy["bank"] = max(0, new_bank)
             await economy_cog.db.save()
 
         for g in self.bot.guilds:
             if g.get_member(user_id):
                 await economy_cog.actualizar_rol_millonario(g)
 
-        print(f"[CONSOLA] Valores fijados para {user_id}: Wallet: {user_data['wallet']:,} | Bank: {user_data['bank']:,}")
+        print(f"[CONSOLA] Valores fijados para {user_id}: Wallet: {user_proxy['wallet']:,} | Bank: {user_proxy['bank']:,}")
 
     async def _cmd_balance(self, args: List[str]) -> None:
         """Muestra el saldo y situacion penal de un usuario."""
@@ -272,10 +274,10 @@ class ConsoleManager:
             return
 
         async with economy_cog.db.lock:
-            user_data = economy_cog.db.get_user_data(user_id)
-            wallet = user_data.get("wallet", 0)
-            bank = user_data.get("bank", 0)
-            in_prison, rem = economy_cog._is_in_prison(user_data)
+            user_proxy = await economy_cog.db.get_user_data(user_id)
+            wallet = user_proxy.get("wallet", 0)
+            bank = user_proxy.get("bank", 0)
+            in_prison, rem = economy_cog._is_in_prison(user_proxy)
 
         # Buscar nombre de usuario en cache
         user_obj = self.bot.get_user(user_id)
@@ -308,8 +310,8 @@ class ConsoleManager:
             return
 
         async with economy_cog.db.lock:
-            user_data = economy_cog.db.get_user_data(user_id)
-            user_data["prison_until"] = 0
+            user_proxy = await economy_cog.db.get_user_data(user_id)
+            user_proxy["prison_until"] = 0
             await economy_cog.db.save()
 
         print(f"[CONSOLA] Usuario {user_id} liberado de prision exitosamente.")
@@ -333,8 +335,8 @@ class ConsoleManager:
             return
 
         async with economy_cog.db.lock:
-            user_data = economy_cog.db.get_user_data(user_id)
-            user_data["prison_until"] = time.time() + (minutos * 60)
+            user_proxy = await economy_cog.db.get_user_data(user_id)
+            user_proxy["prison_until"] = time.time() + (minutos * 60)
             await economy_cog.db.save()
 
         print(f"[CONSOLA] Usuario {user_id} encarcelado por {minutos} minutos.")
@@ -418,7 +420,7 @@ class ConsoleManager:
             await economy_cog._trigger_lottery_draw()
             print("[CONSOLA] Sorteo finalizado y anunciado.")
         else:
-            lottery_data = economy_cog.lottery.get_lottery_data()
+            lottery_data = await economy_cog.lottery.get_lottery_data()
             jackpot = lottery_data.get("jackpot", 50000)
             tickets = lottery_data.get("tickets", {})
             total_tickets = sum(tickets.values())
@@ -435,6 +437,29 @@ class ConsoleManager:
             if last_winner:
                 print(f"- Ultimo Ganador: Usuario {last_winner['user_id']} ({last_winner['amount']:,} almas)")
             print()
+
+    async def _cmd_migrate(self, args: List[str]) -> None:
+        """Migra datos desde JSON legacy a la base de datos SQLite."""
+        economy_cog = self.bot.get_cog("Economy")
+        if not economy_cog:
+            print("[CONSOLA] Modulo de economia no disponible.")
+            return
+
+        # Path del JSON: usar el argumento o derivarlo del path de la BD
+        json_path = args[0] if args else economy_cog.db._json_path
+        db_path = economy_cog.db.file_path
+
+        print(f"[CONSOLA] Iniciando migracion desde: {json_path}")
+        print(f"[CONSOLA] Base de datos destino: {db_path}")
+
+        try:
+            from economy.schema import migrate_from_json
+            await migrate_from_json(db_path, json_path)
+            print("[CONSOLA] Migracion completada exitosamente.")
+        except FileNotFoundError:
+            print(f"[CONSOLA] Error: No se encontro el archivo JSON: {json_path}")
+        except Exception as e:
+            print(f"[CONSOLA] Error durante la migracion: {e}")
 
     async def _cmd_servers(self, args: List[str]) -> None:
         """Lista los servidores en los que participa el bot."""
