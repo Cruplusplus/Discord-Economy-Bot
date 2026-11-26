@@ -1,6 +1,6 @@
 # 🗽 Ivy Discord Economy Bot
 
-Bot de Discord temático inspirado en **Ivy de Deadlock**, diseñado para gestionar un sistema integral de **economía, apuestas, duelos y eventos aleatorios periódicos** en tu servidor con persistencia atómica en JSON, cero números mágicos y total personalización mediante variables de entorno.
+Bot de Discord temático inspirado en **Ivy de Deadlock**, diseñado para gestionar un sistema integral de **economía, apuestas, duelos y eventos aleatorios periódicos** en tu servidor con **persistencia atómica en SQLite (WAL mode)**, cero números mágicos, **logging estructurado JSON**, **pipeline CI/CD**, y **comandos slash (app_commands)**, todo configurable mediante variables de entorno.
 
 ---
 
@@ -57,21 +57,84 @@ El módulo de economía está estructurado como un paquete modular en Python baj
 Discord Economy Bot/
 ├── la_creatura_bot.py       # Entrada principal, ciclo de vida del bot y comandos utilitarios
 ├── console.py               # Consola interactiva CLI en segundo plano (daemon thread)
-├── stats.json               # Persistencia local de balances y estadísticas (ignorado en git)
+├── stats.db                 # Base de datos SQLite con WAL mode (ignorado en git)
+├── stats.json               # Archivo legacy JSON (para migración, ignorado en git)
+├── logs/bot.log             # Logs estructurados JSON rotativos (ignorado en git)
 ├── requirements.txt         # Dependencias del proyecto
+├── .github/workflows/ci.yml # Pipeline CI/CD (ruff, mypy, pytest)
 └── economy/                 # Paquete modular de economía
     ├── __init__.py          # Exporta la clase Economy y setup(bot) para load_extension
     ├── config.py            # Cero números mágicos: constantes de balance y parseo de .env
     ├── lore.py              # Banco inmersivo de diálogos, citas de Ivy y preguntas de trivia
-    ├── database.py          # DataManager con escrituras atómicas (.tmp -> os.replace) y asyncio.Lock
+    ├── database.py          # DataManager SQLite (aiosqlite, WAL, transacciones ACID, Lock reentrante)
+    ├── schema.py            # Esquema normalizado, índices, triggers y migraciones versionadas
+    ├── logging_config.py    # Logging JSON con RotatingFileHandler
     ├── views.py             # Interfaces interactivas (discord.ui.View) desacopladas
     ├── blackjack.py         # Blackjack clandestino (21): baraja, Ases dinámicos y botones View
     ├── shop.py              # Tienda, mercado negro, inventario y menú desplegable (discord.ui.Select)
     ├── lottery.py           # Administrador del Gran Pozo, compra con tope anti-monopolio y sorteo ponderado
     ├── duels.py             # EconomyDuelsMixin: combate 1v1, apuestas externas y liquidación
     ├── events.py            # EconomyEventsMixin: loop periódico @tasks.loop y eventos aleatorios
-    └── cog.py               # Cog principal Economy (hereda mixins y expone comandos base)
+    └── cog.py               # Cog principal Economy (slash commands + prefijos, hereda mixins)
 ```
+
+---
+
+## ⚙️ Características Técnicas Avanzadas (Fase 1 Completada)
+
+### 🗄️ Persistencia SQLite Profesional
+- **Engine:** `aiosqlite` con **WAL mode** para concurrencia lectora/escritora sin bloqueos
+- **Esquema normalizado:** 7 tablas (`users`, `inventory`, `buffs`, `stats`, `lottery`, `lottery_tickets`, `transactions`, `schema_version`)
+- **Migraciones versionadas:** v1 (esquema base) → v2 (tabla `last_loss` para Paradox Chrono)
+- **Migración automática legacy:** Al primer arranque, migra `stats.json` → `stats.db` si la BD está vacía
+- **API compatible:** `DataManager` mantiene la misma interfaz (`get_user_data`, `lock`, `save`) para código existente
+- **Tracking de cambios:** `_DirtyTrackingDict` + `UserDataProxy` para flush atómico solo de campos modificados
+
+### 📝 Logging Estructurado JSON
+- **Formato:** JSON lines con timestamp ISO-8601 UTC, nivel, logger, módulo, función, línea
+- **Rotación:** `RotatingFileHandler` (10MB por archivo, 5 backups por defecto)
+- **Contexto enriquecido:** `extra={"user_id": ..., "guild_id": ..., "command": ..., "duration_ms": ...}`
+- **Configurable vía .env:** `LOG_LEVEL`, `LOG_FILE`, `LOG_MAX_BYTES`, `LOG_BACKUP_COUNT`
+
+### 🔄 Pipeline CI/CD (GitHub Actions)
+```yaml
+# .github/workflows/ci.yml
+- Lint & Type Check: ruff + mypy
+- Unit Tests: pytest-asyncio (17 tests)
+- Build Check: Verifica inicio del bot + creación DB + esquema
+- Security Scan: bandit (opcional)
+```
+
+### ⚡ Comandos Slash (app_commands) - Fase 2.1
+Registrados 22 comandos slash en paralelo a los prefijos (`%`):
+
+| Slash Command | Prefijo Equivalente | Descripción |
+| :--- | :--- | :--- |
+| `/bal [usuario]` | `%bal` | Consulta saldo (mano/banco/total + estado penal) |
+| `/work` | `%work` | Trabaja en el barrio (cooldown 1h, 15s con Café) |
+| `/coin <monto>` | `%coin cara/cruz` | Apuesta cara o cruz (usa choices para elección) |
+| `/ruleta <color> <monto>` | `%ruleta` | Ruleta: rojo, negro, verde (choices) |
+| `/deposit <monto>` | `%dep` | Deposita en banco |
+| `/withdraw <monto>` | `%with` | Retira del banco |
+| `/pay <usuario> <monto>` | `%pay` | Transfiere almas |
+| `/rob <victima>` | `%rob` | Intenta robar |
+| `/blackjack <monto>` | `%bj` | Blackjack vs Ivy |
+| `/tienda` | `%tienda` | Catálogo interactivo |
+| `/comprar <item> [cantidad]` | `%comprar` | Compra 1-clic |
+| `/inv [usuario]` | `%inv` | Inventario + buffs |
+| `/usar <item>` | `%usar` | Usa consumible |
+| `/loteria` | `%loteria` | Estado del pozo |
+| `/ticket <cantidad>` | `%ticket` | Compra boletos |
+| `/rank` | `%rank` | Top 10 más ricos |
+| `/duelo <oponente> <monto>` | `%duelo` | Reta a duelo |
+| `/bet <lado> <monto>` | `%bet` | Apuesta en duelo |
+| `/rebobinar` | `%rebobinar` | Paradox Chrono |
+| `/jail <usuario> [min]` | `%jail` | Admin: encarcelar |
+| `/unjail <usuario>` | `%unjail` | Admin: liberar |
+| `/addmoney <usuario> <monto> [wallet/bank]` | `%addmoney` | Owner: ajustar saldo |
+| `/setmoney <usuario> <wallet> [bank]` | `%setmoney` | Owner: fijar saldo |
+
+> **Dual registration:** Ambos sistemas coexisten. Usa `/` para descubrimiento y autocompletado, `%` para velocidad.
 
 ---
 
@@ -108,6 +171,8 @@ Discord Economy Bot/
    ```bash
    pip install -r requirements.txt
    ```
+   Dependencias principales: `discord.py>=2.3`, `aiosqlite>=0.19`, `aiohttp>=3.9`, `python-dotenv>=1.0`
+   Dev dependencies (CI): `pytest`, `pytest-asyncio`, `ruff`, `mypy`, `bandit`
 
 4. **Configura tus variables de entorno:**
    Copia el archivo de ejemplo `.env.example` y renómbralo a `.env`:
@@ -137,6 +202,15 @@ Discord Economy Bot/
    # ID del canal para el boletín diario y hora de publicación (HH:MM)
    RICHEST_ANNOUNCE_CHANNEL_ID=123456789012345678
    RICHEST_DAILY_ANNOUNCE_TIME=20:00
+
+   # Logging estructurado (opcional, defaults mostrados)
+   LOG_LEVEL=INFO
+   LOG_FILE=logs/bot.log
+   LOG_MAX_BYTES=10485760
+   LOG_BACKUP_COUNT=5
+
+   # Base de datos (default: stats.db)
+   DATA_FILE_PATH=stats.db
    ```
 
 ---
@@ -206,9 +280,11 @@ El bot incluye una consola interactiva en tiempo real que se ejecuta en segundo 
 
 ## 🔒 Seguridad y Privacidad
 
-- **Protección de Credenciales:** El archivo `.gitignore` viene configurado para nunca subir `.env`, bases de datos locales (`stats.json`) ni archivos temporales.
-- **Cero Hardcoding:** Ningún ID de canal, usuario o rol está incrustado rígidamente en el código.
-- **Persistencia Concurrente:** `stats.json` utiliza cierres asíncronos (`asyncio.Lock`) y escritura temporal atómica para evitar corrupción de datos por condiciones de carrera.
+- **Protección de Credenciales:** El archivo `.gitignore` excluye `.env`, `stats.db`, `stats.json`, `logs/`, `__pycache__/` y archivos temporales.
+- **Cero Hardcoding:** Ningún ID de canal, usuario o rol está incrustado en el código; todo configurable vía `.env`.
+- **Persistencia Concurrente SQLite:** `aiosqlite` con **WAL mode** + transacciones ACID + `_ReentrantLock` para evitar condiciones de carrera y corrupción.
+- **Auditoría Inmutable:** Tabla `transactions` registra cada movimiento de almas (tipo, importe, saldos antes/después, contexto JSON) sin sobrescribir.
+- **Logging Estructurado:** Logs JSON sin datos sensibles; rota automáticamente; configurable por entorno.
 
 ---
 

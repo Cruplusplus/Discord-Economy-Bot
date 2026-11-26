@@ -7,25 +7,22 @@ interfaz interactiva discord.ui.View y resolucion de apuestas.
 
 import random
 import time
-from typing import List, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING
+
 import discord
 
 from .config import (
-    CURRENCY_NAME,
-    CURRENCY_SYMBOL,
-    BLACKJACK_PAYOUT_NORMAL,
-    BLACKJACK_PAYOUT_NATURAL,
-    BLACKJACK_TIMEOUT_SECONDS,
     BLACKJACK_DEALER_STAND,
+    BLACKJACK_TIMEOUT_SECONDS,
+    CURRENCY_SYMBOL,
     MIN_RISK_BET_PERCENT,
 )
 from .lore import (
-    IVY_BLACKJACK_WIN_QUOTES,
-    IVY_BLACKJACK_NATURAL_QUOTES,
-    IVY_BLACKJACK_LOSS_QUOTES,
     IVY_BLACKJACK_BUST_QUOTES,
     IVY_BLACKJACK_DEALER_BUST_QUOTES,
+    IVY_BLACKJACK_LOSS_QUOTES,
     IVY_BLACKJACK_PUSH_QUOTES,
+    IVY_BLACKJACK_WIN_QUOTES,
 )
 
 if TYPE_CHECKING:
@@ -62,7 +59,7 @@ class Deck:
     """Baraja de 52 cartas con barajado y reparto aleatorio."""
 
     def __init__(self):
-        self.cards: List[Card] = [Card(r, s) for s in SUITS for r in RANKS]
+        self.cards: list[Card] = [Card(r, s) for s in SUITS for r in RANKS]
         self.shuffle()
 
     def shuffle(self) -> None:
@@ -75,7 +72,7 @@ class Deck:
         return self.cards.pop()
 
 
-def calculate_hand(cards: List[Card]) -> int:
+def calculate_hand(cards: list[Card]) -> int:
     """Calcula el puntaje de una mano manejando Ases dinamicamente (11 o 1)."""
     total = sum(c.value for c in cards)
     aces = sum(1 for c in cards if c.rank == "A")
@@ -87,12 +84,12 @@ def calculate_hand(cards: List[Card]) -> int:
     return total
 
 
-def is_natural_blackjack(cards: List[Card]) -> bool:
+def is_natural_blackjack(cards: list[Card]) -> bool:
     """Determina si la mano es un Blackjack Natural (21 con exactamente 2 cartas)."""
     return len(cards) == 2 and calculate_hand(cards) == 21
 
 
-def format_hand(cards: List[Card], hide_second: bool = False) -> str:
+def format_hand(cards: list[Card], hide_second: bool = False) -> str:
     """Formatea las cartas de la mano para mostrar en el Embed de Discord."""
     if not cards:
         return "`[ Vacio ]`"
@@ -108,12 +105,12 @@ class BlackjackView(discord.ui.View):
         self,
         cog: "Economy",
         user: discord.Member | discord.User,
-        guild: Optional[discord.Guild],
+        guild: discord.Guild | None,
         channel: discord.abc.Messageable,
         bet: int,
         deck: Deck,
-        player_hand: List[Card],
-        dealer_hand: List[Card],
+        player_hand: list[Card],
+        dealer_hand: list[Card],
     ):
         super().__init__(timeout=BLACKJACK_TIMEOUT_SECONDS)
         self.cog = cog
@@ -128,7 +125,7 @@ class BlackjackView(discord.ui.View):
         self.dealer_hand = dealer_hand
         self.doubled = False
         self.game_over = False
-        self.message: Optional[discord.Message] = None
+        self.message: discord.Message | None = None
 
         # Deshabilitar Doblar si el usuario no tiene saldo suficiente en mano
         user_wallet = self._get_user_wallet()
@@ -159,7 +156,7 @@ class BlackjackView(discord.ui.View):
         description: str,
         color: discord.Color,
         hide_dealer: bool = True,
-        footer_text: Optional[str] = None
+        footer_text: str | None = None
     ) -> discord.Embed:
         embed = discord.Embed(
             title=title,
@@ -267,7 +264,7 @@ class BlackjackView(discord.ui.View):
 
     async def _finish_game(
         self,
-        interaction: Optional[discord.Interaction] = None,
+        interaction: discord.Interaction | None = None,
         result_type: str = "stand"
     ) -> None:
         """Resuelve el final de la partida de Blackjack, actualiza balances y BD de forma atomica."""

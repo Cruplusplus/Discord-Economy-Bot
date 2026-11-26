@@ -4,57 +4,58 @@ Incluye el loop periodico con dynamic anti-abuse Robin Hood escalation,
 los triggers para cada tipo de evento barrial y el comando owner '%eventtest'.
 """
 
-import time
-import datetime
-import random
 import asyncio
-from typing import Optional
+import datetime
+import logging
+import random
+import time
+
 import discord
 from discord.ext import commands, tasks
 
-from .views import SoulDropView, RaidBossView, RiskRouletteView, RobinHoodView
-from .lore import IVY_TRIVIA_QUESTIONS, IVY_LOTTERY_WIN_QUOTES
 from .config import (
-    EVENT_MIN_INTERVAL_MINUTES,
-    EVENT_MAX_INTERVAL_MINUTES,
-    EVENT_TRIGGER_CHANCE,
+    BOOST_DURATION_MINUTES,
+    BOOST_MULTIPLIER,
+    CURRENCY_NAME,
+    CURRENCY_SYMBOL,
+    DROP_MAX_SOULS,
+    DROP_MIN_SOULS,
+    DROP_TIMEOUT_SECONDS,
     ECONOMY_CHANNEL_ID,
-    EVENT_WEIGHT_DROP,
-    EVENT_WEIGHT_TRIVIA,
-    EVENT_WEIGHT_RAID,
-    EVENT_WEIGHT_ROULETTE,
+    EVENT_MAX_INTERVAL_MINUTES,
+    EVENT_MIN_INTERVAL_MINUTES,
+    EVENT_TRIGGER_CHANCE,
     EVENT_WEIGHT_BOOST,
+    EVENT_WEIGHT_DROP,
+    EVENT_WEIGHT_RAID,
     EVENT_WEIGHT_ROBIN_HOOD,
-    INACTIVITY_STAGE_1_HOURS,
-    INACTIVITY_STAGE_2_HOURS,
-    INACTIVITY_STAGE_3_HOURS,
     EVENT_WEIGHT_ROBIN_HOOD_STAGE_1,
     EVENT_WEIGHT_ROBIN_HOOD_STAGE_2,
     EVENT_WEIGHT_ROBIN_HOOD_STAGE_3,
-    DROP_MIN_SOULS,
-    DROP_MAX_SOULS,
-    DROP_TIMEOUT_SECONDS,
-    TRIVIA_TIMEOUT_SECONDS,
-    TRIVIA_REWARD_MIN,
-    TRIVIA_REWARD_MAX,
+    EVENT_WEIGHT_ROULETTE,
+    EVENT_WEIGHT_TRIVIA,
+    INACTIVITY_STAGE_1_HOURS,
+    INACTIVITY_STAGE_2_HOURS,
+    INACTIVITY_STAGE_3_HOURS,
+    LOTTERY_DRAW_DAY,
+    LOTTERY_DRAW_TIME,
     RAID_HP,
     RAID_TIMEOUT_SECONDS,
     RAID_TOTAL_POOL,
-    ROULETTE_WIN_AMOUNT,
-    ROULETTE_RISK_WIN_CHANCE,
-    ROULETTE_PRISON_DURATION,
-    BOOST_DURATION_MINUTES,
-    BOOST_MULTIPLIER,
-    ROBIN_HOOD_STEAL_PERCENTAGE,
-    ROBIN_HOOD_MIN_WALLET,
-    CURRENCY_NAME,
-    CURRENCY_SYMBOL,
     RICHEST_ANNOUNCE_CHANNEL_ID,
     RICHEST_DAILY_ANNOUNCE_TIME,
     RICHEST_ROLE_NAME,
-    LOTTERY_DRAW_TIME,
-    LOTTERY_DRAW_DAY,
+    ROBIN_HOOD_MIN_WALLET,
+    ROBIN_HOOD_STEAL_PERCENTAGE,
+    ROULETTE_PRISON_DURATION,
+    ROULETTE_RISK_WIN_CHANCE,
+    ROULETTE_WIN_AMOUNT,
+    TRIVIA_REWARD_MAX,
+    TRIVIA_REWARD_MIN,
+    TRIVIA_TIMEOUT_SECONDS,
 )
+from .lore import IVY_LOTTERY_WIN_QUOTES, IVY_TRIVIA_QUESTIONS
+from .views import RaidBossView, RiskRouletteView, RobinHoodView, SoulDropView
 
 
 class EconomyEventsMixin:
@@ -63,6 +64,10 @@ class EconomyEventsMixin:
     # --------------------------------------------------------------------------
     #                     SISTEMA DE EVENTOS ALEATORIOS (LOOP)
     # --------------------------------------------------------------------------
+
+    def __init__(self):
+        super().__init__()
+        self._log = logging.getLogger("economy.events")
 
     async def cog_load(self):
         """Inicia los loops periódicos al cargar el Cog."""
@@ -76,6 +81,7 @@ class EconomyEventsMixin:
             await super().cog_load()
         except AttributeError:
             pass
+        self._log.info("Loops de eventos iniciados")
 
     async def cog_unload(self):
         """Cancela los loops periódicos al descargar el Cog."""
@@ -90,7 +96,6 @@ class EconomyEventsMixin:
     @tasks.loop(time=LOTTERY_DRAW_TIME)
     async def lottery_weekly_draw_loop(self):
         """Loop semanal que ejecuta el sorteo del Gran Pozo los domingos."""
-        import datetime
         now = datetime.datetime.now()
         if now.weekday() == LOTTERY_DRAW_DAY:
             await self._trigger_lottery_draw()
@@ -120,8 +125,9 @@ class EconomyEventsMixin:
             max_m = max(min_m, max(EVENT_MIN_INTERVAL_MINUTES, EVENT_MAX_INTERVAL_MINUTES))
             nuevo_intervalo = random.randint(min_m, max_m)
             self.random_events_loop.change_interval(minutes=nuevo_intervalo)
+            self._log.debug("Intervalo de eventos recalculado", extra={"interval_minutes": nuevo_intervalo})
         except Exception as e:
-            print(f"[IVY ECONOMY] Error al recalcular intervalo de eventos: {e}")
+            self._log.error("Error al recalcular intervalo de eventos", extra={"error": str(e)})
 
         # 2. Evaluación de probabilidad de disparo para este ciclo
         if EVENT_TRIGGER_CHANCE < 1.0 and random.random() > EVENT_TRIGGER_CHANCE:
@@ -182,6 +188,7 @@ class EconomyEventsMixin:
         ]
 
         evento_seleccionado = random.choices(eventos, weights=pesos, k=1)[0]
+        self._log.info("Evento aleatorio seleccionado", extra={"event": evento_seleccionado.__name__, "robin_weight": robin_weight, "boost_weight": boost_weight})
         try:
             self.active_event = True
             await evento_seleccionado(channel)
@@ -256,13 +263,13 @@ class EconomyEventsMixin:
             return m.channel.id == channel.id and not m.author.bot
 
         start_time = time.time()
-        winner_msg: Optional[discord.Message] = None
+        winner_msg: discord.Message | None = None
 
         while time.time() - start_time < TRIVIA_TIMEOUT_SECONDS:
             remaining = max(1, int(TRIVIA_TIMEOUT_SECONDS - (time.time() - start_time)))
             try:
                 msg = await self.bot.wait_for("message", timeout=remaining, check=check)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 break
 
             clean_content = msg.content.lower().strip()
@@ -366,8 +373,8 @@ class EconomyEventsMixin:
         embed_end = discord.Embed(
             title="🍂 La Lluvia de Almas ha Terminado",
             description=(
-                f"El cielo de El Barrio vuelve a despejarse y las rondas de `%work` regresan a su paga habitual.\n"
-                f"¡Buen laburo a todos los que salieron a ganarse el pan hoy!"
+                "El cielo de El Barrio vuelve a despejarse y las rondas de `%work` regresan a su paga habitual.\n"
+                "¡Buen laburo a todos los que salieron a ganarse el pan hoy!"
             ),
             color=discord.Color.light_grey()
         )
@@ -501,7 +508,7 @@ class EconomyEventsMixin:
 
     # --- Anuncio diario del Más Millonario ---
 
-    async def _trigger_daily_richest_announcement(self, specific_channel: Optional[discord.abc.Messageable] = None, force: bool = False):
+    async def _trigger_daily_richest_announcement(self, specific_channel: discord.abc.Messageable | None = None, force: bool = False):
         """Publica el reporte diario del Más Millonario en el canal establecido exactamente una vez."""
         if specific_channel:
             guild = getattr(specific_channel, "guild", None)
@@ -512,7 +519,6 @@ class EconomyEventsMixin:
         if not RICHEST_ANNOUNCE_CHANNEL_ID:
             return
 
-        import datetime
         today_str = datetime.date.today().isoformat()
         if not force and getattr(self, "_last_daily_announcement_date", None) == today_str:
             return
@@ -589,7 +595,7 @@ class EconomyEventsMixin:
 
     # --- Comando de prueba para Owners ---
 
-    async def _trigger_lottery_draw(self, specific_channel: Optional[discord.abc.Messageable] = None):
+    async def _trigger_lottery_draw(self, specific_channel: discord.abc.Messageable | None = None):
         """Ejecuta el sorteo oficial de la lotería y anuncia el ganador en el canal de economía."""
         channel = specific_channel
         guild = getattr(channel, "guild", None) if channel else None
@@ -642,7 +648,7 @@ class EconomyEventsMixin:
 
     @commands.command(name="eventtest", hidden=True)
     @commands.is_owner()
-    async def eventtest(self, ctx: commands.Context, tipo: Optional[str] = None):
+    async def eventtest(self, ctx: commands.Context, tipo: str | None = None):
         """[Owner] Dispara inmediatamente un evento aleatorio o específico para pruebas."""
         tipos = {
             "drop": self._trigger_soul_drop,

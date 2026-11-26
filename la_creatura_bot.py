@@ -1,13 +1,18 @@
-import os
-import re
 import asyncio
-import aiohttp
+import os
 import random
 import signal
+
+import aiohttp
 from dotenv import load_dotenv
 
 # Cargar variables de entorno desde el archivo .env
 load_dotenv()
+
+# Configurar logging estructurado ANTES de importar modulos que lo usen
+from economy.logging_config import setup_logging
+
+setup_logging()
 
 import discord
 from discord.ext import commands
@@ -30,6 +35,7 @@ bot = commands.Bot(command_prefix=prefijo, intents=intents)
 
 # Administrador de consola interactiva CLI
 from console import ConsoleManager
+
 console_manager = ConsoleManager(bot)
 
 # CONST
@@ -41,15 +47,15 @@ self_discord_id = parse_int_env("OWNER_DISCORD_ID", 0)
 
 # Constantes multimedia y listas de recursos estáticos
 from constants import (
-    LISTA_GIFS,
     HOP_ON_DEADLOCK_LIST,
     LEPOARD_PAW_LIST,
+    LISTA_GIFS,
     ivy_tags,
 )
 
 #code
 
-deadlock_counter = int(0)
+deadlock_counter = 0
 shutdown_started = False
 
 
@@ -117,15 +123,28 @@ def handle_signal(signum, frame):
 # cogs
 async def setup_hook():
     await bot.load_extension("economy")
-    print("Módulos cargados con éxito")
+    print("Modulos cargados con exito")
 
 bot.setup_hook = setup_hook
 
-# ===============EVENTS====================
 
 @bot.event
 async def on_ready():
-    print(f"Bot conectado como {bot.user} (ID: {bot.user.id})")
+    # Sincronizar comandos slash al estar listo (solo la primera vez)
+    if not hasattr(bot, '_synced_commands'):
+        bot._synced_commands = True
+        try:
+            # Sincronización global (puede tardar hasta 1 hora en propagarse)
+            print("[SYNC] Iniciando sincronizacion de comandos slash...", flush=True)
+            
+            guild = discord.Object(id=1465522164521500683)  
+            synced = await bot.tree.sync(guild=guild)
+            
+            print(f"[SYNC] {len(synced)} comandos slash sincronizados: {[c.name for c in synced]}", flush=True)
+        except Exception as e:
+            print(f"[ERROR] Error sincronizando comandos slash: {e}", flush=True)
+
+    print(f"Bot conectado como {bot.user} (ID: {bot.user.id})", flush=True)
     if not console_manager.is_running:
         console_manager.start()
 
@@ -137,14 +156,16 @@ async def on_ready():
             except Exception as e:
                 print(f"No se pudo enviar aviso de inicio al canal {ivy_online_channel}: {e}")
         else:
-            print(f"Canal de inicio ({ivy_online_channel}) no encontrado en caché")
+            print(f"Canal de inicio ({ivy_online_channel}) no encontrado en cache")
 
     await bot.change_presence(activity=discord.Activity(
         type=discord.ActivityType.playing,
         name="Deadlock",
         details="Wishing the Arroyos were In console.py",
         state="Wishing the Arroyos were In console.py"
-    ))   
+    ))
+
+# ===============EVENTS====================   
 
 
 async def shutdown_bot():

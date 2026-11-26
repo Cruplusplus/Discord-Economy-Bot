@@ -3,9 +3,9 @@ Modulo de configuracion y balanceo para el sistema de economia.
 Centraliza la carga de variables de entorno y define constantes sin numeros magicos.
 """
 
-import os
 import datetime
-from typing import Optional, Tuple
+import os
+
 from dotenv import load_dotenv
 
 # Cargar variables de entorno
@@ -32,7 +32,7 @@ def _parse_float_env(var_name: str, default: float) -> float:
     return default
 
 
-def _parse_optional_int_env(var_name: str, default: Optional[int] = None) -> Optional[int]:
+def _parse_optional_int_env(var_name: str, default: int | None = None) -> int | None:
     val = os.getenv(var_name)
     if val:
         try:
@@ -72,7 +72,7 @@ WORK_MAX_REWARD: int = _parse_int_env("WORK_MAX_REWARD", 150)
 
 # --- Apuesta: Cara o Cruz (Coin) ---
 COIN_MULTIPLIER: float = _parse_float_env("COIN_MULTIPLIER", 2.0)
-COIN_FACES: Tuple[str, str] = ("cara", "cruz")
+COIN_FACES: tuple[str, str] = ("cara", "cruz")
 
 # --- Apuesta: Ruleta de la Calle (Ruleta) ---
 RULETA_WEIGHT_ROJO: int = 18       # 18 casillas rojas
@@ -108,11 +108,11 @@ PRISON_DURATION: int = _parse_int_env("PRISON_DURATION", 900)
 # --- Rol del Mas Millonario (Top 1 de la Economia) ---
 RICHEST_ROLE_ID: int = _parse_int_env("RICHEST_ROLE_ID", 0)
 RICHEST_ROLE_NAME: str = os.getenv("RICHEST_ROLE_NAME", "El Más Millonario")
-RICHEST_ANNOUNCE_CHANNEL_ID: Optional[int] = _parse_optional_int_env("RICHEST_ANNOUNCE_CHANNEL_ID", None)
+RICHEST_ANNOUNCE_CHANNEL_ID: int | None = _parse_optional_int_env("RICHEST_ANNOUNCE_CHANNEL_ID", None)
 RICHEST_DAILY_ANNOUNCE_TIME: datetime.time = _parse_time_env("RICHEST_DAILY_ANNOUNCE_TIME", 20, 0)
 
 # --- Duelos y Apuestas (Duelo) ---
-DUEL_CHANNEL_ID: Optional[int] = _parse_optional_int_env("DUEL_CHANNEL_ID", None)
+DUEL_CHANNEL_ID: int | None = _parse_optional_int_env("DUEL_CHANNEL_ID", None)
 DUEL_BET_TIME_SECONDS: int = _parse_int_env("DUEL_BET_TIME_SECONDS", 180)
 DUEL_INVITE_TIMEOUT: int = _parse_int_env("DUEL_INVITE_TIMEOUT", 60)
 DUEL_UNOPPOSED_PROFIT_PERCENT: float = _parse_float_env("DUEL_UNOPPOSED_PROFIT_PERCENT", 0.5)

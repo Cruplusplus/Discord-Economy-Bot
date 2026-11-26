@@ -4,13 +4,15 @@ Usa SQLite (aiosqlite) con WAL mode, transacciones ACID y Lock asincrónico
 para evitar condiciones de carrera y corrupción de datos.
 """
 
-import time
 import asyncio
-import aiosqlite
 import json
-from typing import Dict, Any, Optional, List, Tuple, Set
-from contextlib import asynccontextmanager
+import logging
+import time
 from collections.abc import MutableMapping
+from contextlib import asynccontextmanager
+from typing import Any
+
+import aiosqlite
 
 
 class _ReentrantLock:
@@ -45,17 +47,17 @@ class _ReentrantLock:
 
 from .config import (
     DATA_FILE_PATH,
-    INITIAL_WALLET,
     INITIAL_BANK,
+    INITIAL_WALLET,
     LOTTERY_BASE_JACKPOT,
 )
-from .schema import init_database, migrate_from_json, run_migrations, SCHEMA_VERSION
+from .schema import init_database, migrate_from_json, run_migrations
 
 
 class _DirtyTrackingDict(dict):
     """Dict que notifica a su dueño cuando se modifica."""
     
-    def __init__(self, owner: 'UserDataProxy', initial: Dict[str, Any], field_name: str):
+    def __init__(self, owner: 'UserDataProxy', initial: dict[str, Any], field_name: str):
         self._owner = owner
         self._field_name = field_name
         super().__init__(initial)
@@ -96,12 +98,12 @@ class UserDataProxy(MutableMapping):
     Compatible con el patrón: user["wallet"] += 10; user["inventory"]["item"] = 1; await db.save()
     """
     
-    def __init__(self, db: 'DataManager', user_id: int, initial: Dict[str, Any]):
+    def __init__(self, db: 'DataManager', user_id: int, initial: dict[str, Any]):
         self._db = db
         self._user_id = user_id
         self._data = dict(initial)
-        self._dirty_fields: Set[str] = set()
-        self._nested_proxies: Dict[str, _DirtyTrackingDict] = {}
+        self._dirty_fields: set[str] = set()
+        self._nested_proxies: dict[str, _DirtyTrackingDict] = {}
         
         # Envolver dicts anidados para rastrear mutaciones internas
         for key in ("inventory", "buffs", "stats", "last_loss"):
@@ -274,7 +276,8 @@ class DataManager:
             self._json_path = file_path
         else:
             self._json_path = file_path + '.json'
-        self._dirty_proxies: Set[UserDataProxy] = set()
+        self._dirty_proxies: set[UserDataProxy] = set()
+        self._log = logging.getLogger("economy.database")
 
     def _register_dirty(self, proxy: UserDataProxy):
         self._dirty_proxies.add(proxy)
@@ -307,10 +310,10 @@ class DataManager:
                 user_count = row[0] if row else 0
         
         if user_count == 0:
-            print("[IVY ECONOMY] Base de datos vacía, migrando desde JSON legacy...")
+            self._log.info("Base de datos vacía, migrando desde JSON legacy", extra={"json_path": self._json_path})
             await migrate_from_json(self.file_path, self._json_path)
         else:
-            print(f"[IVY ECONOMY] BD ya tiene {user_count} usuarios, saltando migración JSON.")
+            self._log.info("BD ya tiene usuarios, saltando migración JSON", extra={"user_count": user_count})
 
     @asynccontextmanager
     async def transaction(self):
@@ -320,15 +323,14 @@ class DataManager:
             async with self.transaction() as db:
                 await db.execute(...)
         """
-        async with self._lock:
-            async with aiosqlite.connect(self.file_path) as db:
-                await db.execute("PRAGMA foreign_keys=ON")
-                try:
-                    yield db
-                    await db.commit()
-                except Exception:
-                    await db.rollback()
-                    raise
+        async with self._lock, aiosqlite.connect(self.file_path) as db:
+            await db.execute("PRAGMA foreign_keys=ON")
+            try:
+                yield db
+                await db.commit()
+            except Exception:
+                await db.rollback()
+                raise
 
     # --------------------------------------------------------------------------
     #                           USERS
@@ -372,7 +374,7 @@ class DataManager:
 
     async def _build_user_dict(self, db: aiosqlite.Connection, user_id: int, wallet: int, bank: int,
                                 last_work: float, last_rob: float, prison_until: float,
-                                last_gamble: float, last_paradox_rewind: float) -> Dict[str, Any]:
+                                last_gamble: float, last_paradox_rewind: float) -> dict[str, Any]:
         """Construye el diccionario completo del usuario consultando tablas relacionadas."""
         inv = await self._get_inventory(db, user_id)
         buffs = await self._get_buffs(db, user_id)
@@ -391,7 +393,7 @@ class DataManager:
             "stats": stats,
         }
 
-    async def _build_user_dict_from_row(self, db: aiosqlite.Connection, row: aiosqlite.Row) -> Dict[str, Any]:
+    async def _build_user_dict_from_row(self, db: aiosqlite.Connection, row: aiosqlite.Row) -> dict[str, Any]:
         user_id = row["user_id"]
         inv = await self._get_inventory(db, user_id)
         buffs = await self._get_buffs(db, user_id)
@@ -419,7 +421,7 @@ class DataManager:
             "stats": stats,
         }
 
-    async def _get_inventory(self, db: aiosqlite.Connection, user_id: int) -> Dict[str, int]:
+    async def _get_inventory(self, db: aiosqlite.Connection, user_id: int) -> dict[str, int]:
         inv = {}
         async with db.execute(
             "SELECT item_id, quantity FROM inventory WHERE user_id = ? AND quantity > 0",
@@ -429,7 +431,7 @@ class DataManager:
                 inv[row["item_id"]] = row["quantity"]
         return inv
 
-    async def _get_buffs(self, db: aiosqlite.Connection, user_id: int) -> Dict[str, float]:
+    async def _get_buffs(self, db: aiosqlite.Connection, user_id: int) -> dict[str, float]:
         now = time.time()
         buffs = {}
         async with db.execute(
@@ -440,7 +442,7 @@ class DataManager:
                 buffs[row["buff_id"]] = row["expires_at"]
         return buffs
 
-    async def _get_stats(self, db: aiosqlite.Connection, user_id: int) -> Dict[str, int]:
+    async def _get_stats(self, db: aiosqlite.Connection, user_id: int) -> dict[str, int]:
         async with db.execute(
             "SELECT * FROM stats WHERE user_id = ?", (user_id,)
         ) as cursor:
@@ -471,7 +473,7 @@ class DataManager:
     #                           LOTTERY
     # --------------------------------------------------------------------------
 
-    async def get_lottery_data(self) -> Dict[str, Any]:
+    async def get_lottery_data(self) -> dict[str, Any]:
         """Obtiene o inicializa el registro del pozo y tickets de la lotería."""
         await self.initialize()
         
@@ -519,40 +521,39 @@ class DataManager:
                     "total_drawn": row["total_drawn"],
                 }
 
-    async def reset_lottery(self) -> Dict[str, Any]:
+    async def reset_lottery(self) -> dict[str, Any]:
         """Reinicia los tickets y repone el pozo base tras un sorteo."""
         await self.initialize()
         
-        async with self._lock:
-            async with aiosqlite.connect(self.file_path) as db:
-                await db.execute("PRAGMA foreign_keys=ON")
-                now = time.time()
-                
-                await db.execute(
-                    """
+        async with self._lock, aiosqlite.connect(self.file_path) as db:
+            await db.execute("PRAGMA foreign_keys=ON")
+            now = time.time()
+            
+            await db.execute(
+                """
                     UPDATE lottery SET
                         jackpot = ?,
                         last_draw = ?,
                         total_drawn = total_drawn + 1
                     WHERE id = 1
                     """,
-                    (LOTTERY_BASE_JACKPOT, now)
-                )
-                await db.execute("DELETE FROM lottery_tickets WHERE draw_id = 1")
-                await db.commit()
-                
-                return {
-                    "jackpot": LOTTERY_BASE_JACKPOT,
-                    "tickets": {},
-                    "last_draw": now,
-                    "total_drawn": 1,
-                }
+                (LOTTERY_BASE_JACKPOT, now)
+            )
+            await db.execute("DELETE FROM lottery_tickets WHERE draw_id = 1")
+            await db.commit()
+            
+            return {
+                "jackpot": LOTTERY_BASE_JACKPOT,
+                "tickets": {},
+                "last_draw": now,
+                "total_drawn": 1,
+            }
 
     # --------------------------------------------------------------------------
     #                           LEADERBOARD / ALL USERS
     # --------------------------------------------------------------------------
 
-    async def get_all_users(self) -> Dict[str, Dict[str, Any]]:
+    async def get_all_users(self) -> dict[str, dict[str, Any]]:
         """
         Devuelve todos los registros de usuarios reales para leaderboard.
         Retorna dict {uid_str: user_data_dict} compatible con versión JSON.
@@ -575,7 +576,7 @@ class DataManager:
                 
                 return users
 
-    async def get_top_wealthy(self, limit: int = 10) -> List[Tuple[int, int, int, int]]:
+    async def get_top_wealthy(self, limit: int = 10) -> list[tuple[int, int, int, int]]:
         """
         Retorna top usuarios por riqueza total: [(user_id, total, wallet, bank), ...]
         Optimizado para leaderboard sin cargar inventario/buffs/stats.
@@ -604,10 +605,21 @@ class DataManager:
         balance_after: int,
         bank_before: int,
         bank_after: int,
-        context: Optional[Dict[str, Any]] = None,
+        context: dict[str, Any] | None = None,
     ) -> None:
         """Registra una transacción inmutable en la tabla de auditoría."""
         await self.initialize()
+        
+        self._log.debug(
+            "Registrando transacción",
+            extra={
+                "user_id": user_id,
+                "tx_type": tx_type,
+                "amount": amount,
+                "balance_before": balance_before,
+                "balance_after": balance_after,
+            },
+        )
         
         async with self._lock:
             async with aiosqlite.connect(self.file_path) as db:
@@ -643,6 +655,8 @@ class DataManager:
         if not self._dirty_proxies:
             return
         
+        self._log.debug("Guardando proxies sucios", extra={"count": len(self._dirty_proxies)})
+        
         # Flush all dirty proxies in a single transaction for efficiency
         # But we need to be careful - each proxy's flush() does its own transaction.
         # For now, flush sequentially; could optimize with a batch flush later.
@@ -650,7 +664,7 @@ class DataManager:
             try:
                 await proxy.flush()
             except Exception as e:
-                print(f"[IVY ECONOMY] Error flushing proxy for user {proxy._user_id}: {e}")
+                self._log.error("Error flushing proxy", extra={"user_id": proxy._user_id, "error": str(e)})
         
         self._dirty_proxies.clear()
 

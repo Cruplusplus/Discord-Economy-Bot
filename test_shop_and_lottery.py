@@ -1,4 +1,3 @@
-import asyncio
 import os
 import shutil
 import tempfile
@@ -6,32 +5,28 @@ import time
 import unittest
 
 from economy.config import (
-    LOTTERY_TICKET_PRICE,
-    LOTTERY_MAX_TICKETS_PER_USER,
-    LOTTERY_BASE_JACKPOT,
-    COFFEE_WORK_COOLDOWN,
     COFFEE_DURATION_SECONDS,
-    KUDZU_DURATION_SECONDS,
-    KUDZU_DROP_BONUS_PERCENT,
-    LOCKPICK_FAIL_THRESHOLD,
-    ROB_FAIL_THRESHOLD,
-    PRISON_DURATION,
-    ITEM_PRICE_COFFEE,
-    ITEM_PRICE_STONE_CHARM,
-    ITEM_PRICE_LOCKPICK,
-    ITEM_PRICE_BAIL_BOND,
+    COFFEE_WORK_COOLDOWN,
     ITEM_PRICE_PARADOX_CHRONO,
-    PARADOX_REWIND_WINDOW_SECONDS,
+    ITEM_PRICE_STONE_CHARM,
+    KUDZU_DROP_BONUS_PERCENT,
+    KUDZU_DURATION_SECONDS,
+    LOCKPICK_FAIL_THRESHOLD,
+    LOTTERY_BASE_JACKPOT,
+    LOTTERY_MAX_TICKETS_PER_USER,
+    LOTTERY_TICKET_PRICE,
     PARADOX_COOLDOWN_SECONDS,
+    PRISON_DURATION,
+    ROB_FAIL_THRESHOLD,
 )
 from economy.database import DataManager
+from economy.lottery import LotteryManager
 from economy.shop import (
     CATALOG,
     get_item,
-    get_user_inventory,
     get_user_buffs,
+    get_user_inventory,
 )
-from economy.lottery import LotteryManager
 
 
 class DummyCog:
@@ -416,8 +411,9 @@ class TestShopAndLottery(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(cog.db.lock.locked(), "El lock de la base de datos debe quedar liberado")
 
     async def test_coin_and_ruleta_commands_execution(self):
-        from economy.cog import Economy
         from unittest.mock import AsyncMock, MagicMock
+
+        from economy.cog import Economy
 
         class MockBot:
             pass
@@ -453,8 +449,9 @@ class TestShopAndLottery(unittest.IsolatedAsyncioTestCase):
         ctx.reply.assert_called()
 
     async def test_get_all_users_and_rank_with_metadata(self):
-        from economy.cog import Economy
         from unittest.mock import AsyncMock, MagicMock
+
+        from economy.cog import Economy
 
         # Insert user accounts and metadata key like _lottery
         u1 = await self.db.get_user_data(4001)
@@ -488,8 +485,9 @@ class TestShopAndLottery(unittest.IsolatedAsyncioTestCase):
         ctx.reply.assert_called()
 
     async def test_paw_command_execution(self):
-        import la_creatura_bot
         from unittest.mock import AsyncMock, MagicMock
+
+        import la_creatura_bot
 
         ctx = MagicMock()
         ctx.author.id = 12345
@@ -523,8 +521,9 @@ class TestShopAndLottery(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any(k in sent_msg for k in ["tenor.com", "giphy.com", "http"]))
 
     async def test_daily_richest_announcement_single_send(self):
-        from economy.cog import Economy
         from unittest.mock import AsyncMock, MagicMock, patch
+
+        from economy.cog import Economy
 
         class MockBot:
             def __init__(self):

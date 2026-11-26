@@ -3,25 +3,30 @@ Modulo de combates callejeros y apuestas entre usuarios (Duelos).
 Contiene EconomyDuelsMixin con los comandos '%duelo', '%bet' y la resolucion automatica.
 """
 
-import time
-import random
 import asyncio
-from typing import Optional
+import logging
+import random
+import time
+
 import discord
 from discord.ext import commands
 
 from .config import (
-    DUEL_CHANNEL_ID,
+    CURRENCY_SYMBOL,
     DUEL_BET_TIME_SECONDS,
+    DUEL_CHANNEL_ID,
     DUEL_INVITE_TIMEOUT,
     DUEL_UNOPPOSED_PROFIT_PERCENT,
-    CURRENCY_SYMBOL,
     MIN_RISK_BET_PERCENT,
 )
 
 
 class EconomyDuelsMixin:
     """Mixin que encapsula el sistema de duelos PvP y apuestas comunitarias de tribuna."""
+
+    def __init__(self):
+        super().__init__()
+        self._log = logging.getLogger("economy.duels")
 
     # --------------------------------------------------------------------------
     #                   SISTEMA DE COMBATE Y APUESTAS: DUELO
@@ -114,7 +119,7 @@ class EconomyDuelsMixin:
 
             try:
                 reaction, _ = await self.bot.wait_for("reaction_add", timeout=DUEL_INVITE_TIMEOUT, check=reaction_check)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 self.pending_challenges.discard(guild_id)
                 await ctx.send(f"⌛ El reto expiró: {member.mention} no respondió a tiempo. Los callejones siguen en silencio.")
                 return
@@ -278,7 +283,17 @@ class EconomyDuelsMixin:
                     "total": 0
                 })
 
-            await self.db.save()
+        self._log.info("Duelo resuelto", extra={
+            "guild_id": guild_id,
+            "winner_id": winner.id,
+            "loser_id": loser_id,
+            "stake": stake,
+            "total_bets": len(duel["bets"]),
+            "losing_pool": losing_pool,
+            "winning_total": winning_total,
+        })
+
+        await self.db.save()
 
         # Sincronizar el rol del mas millonario tras el cambio de riquezas
         if channel.guild:
