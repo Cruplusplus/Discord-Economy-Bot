@@ -3,7 +3,6 @@ Esquema de base de datos SQLite para Discord Economy Bot.
 Define tablas, índices y migraciones versionadas.
 """
 
-
 import aiosqlite
 
 # Version actual del esquema (incrementar en cada migración)
@@ -18,7 +17,7 @@ TABLES: list[tuple[str, str]] = [
             version INTEGER PRIMARY KEY,
             applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        """
+        """,
     ),
     (
         "users",
@@ -36,7 +35,7 @@ TABLES: list[tuple[str, str]] = [
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        """
+        """,
     ),
     (
         "inventory",
@@ -48,7 +47,7 @@ TABLES: list[tuple[str, str]] = [
             PRIMARY KEY (user_id, item_id),
             FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
         )
-        """
+        """,
     ),
     (
         "buffs",
@@ -60,7 +59,7 @@ TABLES: list[tuple[str, str]] = [
             PRIMARY KEY (user_id, buff_id),
             FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
         )
-        """
+        """,
     ),
     (
         "stats",
@@ -75,7 +74,7 @@ TABLES: list[tuple[str, str]] = [
             ivy_rob_attempts INTEGER NOT NULL DEFAULT 0,
             FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
         )
-        """
+        """,
     ),
     (
         "lottery",
@@ -90,7 +89,7 @@ TABLES: list[tuple[str, str]] = [
             last_draw TIMESTAMP,
             total_drawn INTEGER NOT NULL DEFAULT 0
         )
-        """
+        """,
     ),
     (
         "lottery_tickets",
@@ -102,7 +101,7 @@ TABLES: list[tuple[str, str]] = [
             PRIMARY KEY (user_id, draw_id),
             FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
         )
-        """
+        """,
     ),
     (
         "transactions",
@@ -120,7 +119,7 @@ TABLES: list[tuple[str, str]] = [
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
         )
-        """
+        """,
     ),
     (
         "cooldowns",
@@ -132,7 +131,7 @@ TABLES: list[tuple[str, str]] = [
             PRIMARY KEY (user_id, command),
             FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
         )
-        """
+        """,
     ),
 ]
 
@@ -167,37 +166,36 @@ async def init_database(db_path: str) -> None:
         await db.execute("PRAGMA journal_mode=WAL")
         await db.execute("PRAGMA synchronous=NORMAL")
         await db.execute("PRAGMA foreign_keys=ON")
-        
+
         # Crear tablas
         for table_name, sql in TABLES:
             await db.execute(sql)
-        
+
         # Crear índices
         for sql in INDEXES:
             await db.execute(sql)
-        
+
         # Crear triggers
         for sql in TRIGGERS:
             await db.execute(sql)
-        
+
         # Inicializar versión de esquema
         await db.execute(
-            "INSERT OR IGNORE INTO schema_version (version) VALUES (?)",
-            (SCHEMA_VERSION,)
+            "INSERT OR IGNORE INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,)
         )
-        
+
         # Inicializar registro único de lotería
-        await db.execute(
-            "INSERT OR IGNORE INTO lottery (id, jackpot) VALUES (1, 50000)"
-        )
-        
+        await db.execute("INSERT OR IGNORE INTO lottery (id, jackpot) VALUES (1, 50000)")
+
         await db.commit()
 
 
 async def get_schema_version(db_path: str) -> int:
     """Obtiene la versión actual del esquema aplicada."""
     async with aiosqlite.connect(db_path) as db:
-        async with db.execute("SELECT version FROM schema_version ORDER BY version DESC LIMIT 1") as cursor:
+        async with db.execute(
+            "SELECT version FROM schema_version ORDER BY version DESC LIMIT 1"
+        ) as cursor:
             row = await cursor.fetchone()
             return row[0] if row else 0
 
@@ -208,12 +206,12 @@ async def run_migrations(db_path: str) -> None:
     Cada migración debe ser idempotente y transaccional.
     """
     current_version = await get_schema_version(db_path)
-    
+
     migrations = {
         1: _migration_v1_initial,
         2: _migration_v2_add_last_loss,
     }
-    
+
     for version in range(current_version + 1, SCHEMA_VERSION + 1):
         if version in migrations:
             print(f"[DB] Ejecutando migración v{version}...")
@@ -221,7 +219,7 @@ async def run_migrations(db_path: str) -> None:
             async with aiosqlite.connect(db_path) as db:
                 await db.execute(
                     "UPDATE schema_version SET version = ? WHERE version = ?",
-                    (version, current_version)
+                    (version, current_version),
                 )
                 await db.commit()
             print(f"[DB] Migración v{version} completada.")
@@ -237,7 +235,7 @@ async def _migration_v2_add_last_loss(db_path: str) -> None:
         # Verificar si la columna ya existe
         async with db.execute("PRAGMA table_info(users)") as cursor:
             columns = [row[1] async for row in cursor]
-        
+
         if "last_loss" not in columns:
             await db.execute("ALTER TABLE users ADD COLUMN last_loss TEXT")
             await db.commit()
@@ -246,6 +244,7 @@ async def _migration_v2_add_last_loss(db_path: str) -> None:
 
 # --- Utilidades para migración desde JSON ---
 
+
 async def migrate_from_json(db_path: str, json_path: str) -> None:
     """
     Migra datos desde stats.json (formato legacy) a SQLite.
@@ -253,59 +252,68 @@ async def migrate_from_json(db_path: str, json_path: str) -> None:
     """
     import json
     import os
-    
+
     if not os.path.exists(json_path):
         print(f"[DB] No existe {json_path}, saltando migración JSON.")
         return
-    
+
     with open(json_path, "r", encoding="utf-8") as f:
         data = json.load(f)
-    
+
     async with aiosqlite.connect(db_path) as db:
         await db.execute("PRAGMA foreign_keys=ON")
-        
+
         for uid_str, udata in data.items():
             if not uid_str.isdigit() or not isinstance(udata, dict):
                 continue
-            
+
             user_id = int(uid_str)
-            
+
             # users
-            wallet = int(round(udata.get("wallet", 100)))
-            bank = int(round(udata.get("bank", 0)))
+            wallet = round(udata.get("wallet", 100))
+            bank = round(udata.get("bank", 0))
             last_work = float(udata.get("last_work", 0))
             last_rob = float(udata.get("last_rob", 0))
             prison_until = float(udata.get("prison_until", 0))
             last_gamble = float(udata.get("last_gamble", 0))
             last_paradox_rewind = float(udata.get("last_paradox_rewind", 0))
-            
+
             await db.execute(
                 """
                 INSERT OR REPLACE INTO users 
                 (user_id, wallet, bank, last_work, last_rob, prison_until, last_gamble, last_paradox_rewind)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (user_id, wallet, bank, last_work, last_rob, prison_until, last_gamble, last_paradox_rewind)
+                (
+                    user_id,
+                    wallet,
+                    bank,
+                    last_work,
+                    last_rob,
+                    prison_until,
+                    last_gamble,
+                    last_paradox_rewind,
+                ),
             )
-            
+
             # inventory
             inv = udata.get("inventory", {})
             for item_id, qty in inv.items():
                 if qty > 0:
                     await db.execute(
                         "INSERT OR REPLACE INTO inventory (user_id, item_id, quantity) VALUES (?, ?, ?)",
-                        (user_id, item_id, int(qty))
+                        (user_id, item_id, int(qty)),
                     )
-            
+
             # buffs
             buffs = udata.get("buffs", {})
             for buff_id, expires_at in buffs.items():
                 if expires_at > 0:
                     await db.execute(
                         "INSERT OR REPLACE INTO buffs (user_id, buff_id, expires_at) VALUES (?, ?, ?)",
-                        (user_id, buff_id, float(expires_at))
+                        (user_id, buff_id, float(expires_at)),
                     )
-            
+
             # stats
             stats = udata.get("stats", {})
             await db.execute(
@@ -322,9 +330,9 @@ async def migrate_from_json(db_path: str, json_path: str) -> None:
                     stats.get("gambles_won", 0),
                     stats.get("gambles_lost", 0),
                     stats.get("ivy_rob_attempts", 0),
-                )
+                ),
             )
-        
+
         # lottery data
         lottery_data = data.get("_lottery", {})
         if lottery_data:
@@ -342,23 +350,33 @@ async def migrate_from_json(db_path: str, json_path: str) -> None:
                 """,
                 (
                     int(lottery_data.get("jackpot", 50000)),
-                    lottery_data.get("last_winner", {}).get("user_id") if lottery_data.get("last_winner") else None,
-                    lottery_data.get("last_winner", {}).get("amount") if lottery_data.get("last_winner") else None,
-                    lottery_data.get("last_winner", {}).get("timestamp") if lottery_data.get("last_winner") else None,
-                    lottery_data.get("last_winner", {}).get("total_tickets") if lottery_data.get("last_winner") else None,
+                    lottery_data.get("last_winner", {}).get("user_id")
+                    if lottery_data.get("last_winner")
+                    else None,
+                    lottery_data.get("last_winner", {}).get("amount")
+                    if lottery_data.get("last_winner")
+                    else None,
+                    lottery_data.get("last_winner", {}).get("timestamp")
+                    if lottery_data.get("last_winner")
+                    else None,
+                    lottery_data.get("last_winner", {}).get("total_tickets")
+                    if lottery_data.get("last_winner")
+                    else None,
                     lottery_data.get("last_draw") if lottery_data.get("last_draw") else None,
                     int(lottery_data.get("total_drawn", 0)),
-                )
+                ),
             )
-            
+
             tickets = lottery_data.get("tickets", {})
             for uid_str, count in tickets.items():
                 if uid_str.isdigit() and count > 0:
                     await db.execute(
                         "INSERT OR REPLACE INTO lottery_tickets (user_id, ticket_count, draw_id) VALUES (?, ?, 1)",
-                        (int(uid_str), int(count))
+                        (int(uid_str), int(count)),
                     )
-        
+
         await db.commit()
-    
-    print(f"[DB] Migración desde {json_path} completada: {len([k for k in data.keys() if k.isdigit()])} usuarios.")
+
+    print(
+        f"[DB] Migración desde {json_path} completada: {len([k for k in data if k.isdigit()])} usuarios."
+    )

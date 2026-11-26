@@ -43,7 +43,9 @@ def _parse_optional_int_env(var_name: str, default: int | None = None) -> int | 
     return default
 
 
-def _parse_time_env(var_name: str, default_hour: int = 20, default_minute: int = 0) -> datetime.time:
+def _parse_time_env(
+    var_name: str, default_hour: int = 20, default_minute: int = 0
+) -> datetime.time:
     """Parsea una hora HH:MM desde el entorno utilizando la zona horaria del sistema."""
     raw = os.getenv(var_name)
     local_tz = datetime.datetime.now().astimezone().tzinfo
@@ -75,19 +77,27 @@ COIN_MULTIPLIER: float = _parse_float_env("COIN_MULTIPLIER", 2.0)
 COIN_FACES: tuple[str, str] = ("cara", "cruz")
 
 # --- Apuesta: Ruleta de la Calle (Ruleta) ---
-RULETA_WEIGHT_ROJO: int = 18       # 18 casillas rojas
-RULETA_WEIGHT_NEGRO: int = 18      # 18 casillas negras
-RULETA_WEIGHT_VERDE: int = 1       # 1 casilla verde (pleno especial)
+RULETA_WEIGHT_ROJO: int = 18  # 18 casillas rojas
+RULETA_WEIGHT_NEGRO: int = 18  # 18 casillas negras
+RULETA_WEIGHT_VERDE: int = 1  # 1 casilla verde (pleno especial)
 
 # Multiplicadores de pago
-RULETA_PAYOUT_ROJO: float = 2.0    # x2
-RULETA_PAYOUT_NEGRO: float = 2.0   # x2
+RULETA_PAYOUT_ROJO: float = 2.0  # x2
+RULETA_PAYOUT_NEGRO: float = 2.0  # x2
 RULETA_PAYOUT_VERDE: float = 14.0  # x14 (alto riesgo, premio gordo)
 
 RULETA_COLOR_MAP = {
-    "r": "rojo", "rojo": "rojo", "red": "rojo",
-    "b": "negro", "black": "negro", "negro": "negro", "n": "negro",
-    "g": "verde", "green": "verde", "verde": "verde", "v": "verde"
+    "r": "rojo",
+    "rojo": "rojo",
+    "red": "rojo",
+    "b": "negro",
+    "black": "negro",
+    "negro": "negro",
+    "n": "negro",
+    "g": "verde",
+    "green": "verde",
+    "verde": "verde",
+    "v": "verde",
 }
 
 # --- Apuesta: Blackjack Callejero (Blackjack) ---
@@ -99,16 +109,18 @@ BLACKJACK_DEALER_STAND: int = _parse_int_env("BLACKJACK_DEALER_STAND", 17)
 # --- Robo Callejero (Rob) ---
 ROB_COOLDOWN: int = _parse_int_env("ROB_COOLDOWN", 120)
 ROB_VICTIM_MIN_WALLET: int = _parse_int_env("ROB_VICTIM_MIN_WALLET", 20)
-ROB_DICE_MIN: int = 1              # Tirada minima de dado
-ROB_DICE_MAX: int = 20             # Tirada maxima (d20)
-ROB_FAIL_THRESHOLD: int = 12       # Si la tirada es MENOR (< 12), el robo fracasa
-ROB_FAIL_FINE: int = 30            # Fianza/multa cobrada al ladron por la policia
+ROB_DICE_MIN: int = 1  # Tirada minima de dado
+ROB_DICE_MAX: int = 20  # Tirada maxima (d20)
+ROB_FAIL_THRESHOLD: int = 12  # Si la tirada es MENOR (< 12), el robo fracasa
+ROB_FAIL_FINE: int = 30  # Fianza/multa cobrada al ladron por la policia
 PRISON_DURATION: int = _parse_int_env("PRISON_DURATION", 900)
 
 # --- Rol del Mas Millonario (Top 1 de la Economia) ---
 RICHEST_ROLE_ID: int = _parse_int_env("RICHEST_ROLE_ID", 0)
 RICHEST_ROLE_NAME: str = os.getenv("RICHEST_ROLE_NAME", "El Más Millonario")
-RICHEST_ANNOUNCE_CHANNEL_ID: int | None = _parse_optional_int_env("RICHEST_ANNOUNCE_CHANNEL_ID", None)
+RICHEST_ANNOUNCE_CHANNEL_ID: int | None = _parse_optional_int_env(
+    "RICHEST_ANNOUNCE_CHANNEL_ID", None
+)
 RICHEST_DAILY_ANNOUNCE_TIME: datetime.time = _parse_time_env("RICHEST_DAILY_ANNOUNCE_TIME", 20, 0)
 
 # --- Duelos y Apuestas (Duelo) ---
@@ -160,8 +172,12 @@ EVENT_WEIGHT_BOOST: float = _parse_float_env("EVENT_WEIGHT_BOOST", 5.0)
 EVENT_WEIGHT_ROBIN_HOOD: float = _parse_float_env("EVENT_WEIGHT_ROBIN_HOOD", 5.0)
 
 # --- Sistema Anti-Abuso y Escalamiento por Inactividad del Lider ---
-MIN_RISK_BET_PERCENT: float = _parse_float_env("MIN_RISK_BET_PERCENT", 0.02)  # 2% de la fortuna total del lider
-MIN_RISK_BET_FLOOR: int = _parse_int_env("MIN_RISK_BET_FLOOR", 500)          # Piso minimo de almas para validar riesgo
+MIN_RISK_BET_PERCENT: float = _parse_float_env(
+    "MIN_RISK_BET_PERCENT", 0.02
+)  # 2% de la fortuna total del lider
+MIN_RISK_BET_FLOOR: int = _parse_int_env(
+    "MIN_RISK_BET_FLOOR", 500
+)  # Piso minimo de almas para validar riesgo
 
 # Escalamiento progresivo de probabilidad para Robin Hood segun horas sin apostar
 INACTIVITY_STAGE_1_HOURS: int = _parse_int_env("INACTIVITY_STAGE_1_HOURS", 24)

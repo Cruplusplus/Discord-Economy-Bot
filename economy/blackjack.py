@@ -140,7 +140,7 @@ class BlackjackView(discord.ui.View):
         if interaction.user.id != self.user_id:
             await interaction.response.send_message(
                 "❌ ¡Ey, chacho! Esta mesa de Blackjack pertenece a otro vecino. ¡Tirá tus propias cartas con `%blackjack`!",
-                ephemeral=True
+                ephemeral=True,
             )
             return False
         return True
@@ -156,13 +156,9 @@ class BlackjackView(discord.ui.View):
         description: str,
         color: discord.Color,
         hide_dealer: bool = True,
-        footer_text: str | None = None
+        footer_text: str | None = None,
     ) -> discord.Embed:
-        embed = discord.Embed(
-            title=title,
-            description=description,
-            color=color
-        )
+        embed = discord.Embed(title=title, description=description, color=color)
 
         player_score = calculate_hand(self.player_hand)
         dealer_score = calculate_hand(self.dealer_hand)
@@ -180,12 +176,12 @@ class BlackjackView(discord.ui.View):
         embed.add_field(
             name=f"👤 Mano de {self.user.display_name} ({player_status})",
             value=format_hand(self.player_hand),
-            inline=False
+            inline=False,
         )
         embed.add_field(
             name=f"🪨 Mano de Ivy - Crupier ({dealer_status})",
             value=format_hand(self.dealer_hand, hide_second=hide_dealer),
-            inline=False
+            inline=False,
         )
 
         apuesta_str = f"{self.bet:,} {CURRENCY_SYMBOL}"
@@ -194,9 +190,16 @@ class BlackjackView(discord.ui.View):
         embed.add_field(name="💰 Apuesta en Mesa", value=apuesta_str, inline=True)
 
         user_data = self.cog.db.get_user_data(self.user_id)
-        embed.add_field(name="💵 Tu Billetera Restante", value=f"{user_data.get('wallet', 0):,} {CURRENCY_SYMBOL}", inline=True)
+        embed.add_field(
+            name="💵 Tu Billetera Restante",
+            value=f"{user_data.get('wallet', 0):,} {CURRENCY_SYMBOL}",
+            inline=True,
+        )
 
-        footer = footer_text or "Usa los botones para Pedir (Hit), Plantarte (Stand) o Doblar (Double Down)."
+        footer = (
+            footer_text
+            or "Usa los botones para Pedir (Hit), Plantarte (Stand) o Doblar (Double Down)."
+        )
         embed.set_footer(text=footer)
         return embed
 
@@ -221,7 +224,7 @@ class BlackjackView(discord.ui.View):
                 title="🃏 Blackjack Callejero - Mano en Juego",
                 description="Robaste una carta. ¿Te plantas o buscas acercarte más a 21?",
                 color=discord.Color.blue(),
-                hide_dealer=True
+                hide_dealer=True,
             )
             await interaction.response.edit_message(embed=embed, view=self)
 
@@ -243,7 +246,7 @@ class BlackjackView(discord.ui.View):
             if wallet < self.initial_bet:
                 await interaction.response.send_message(
                     f"❌ ¡No tienes suficientes almas en mano para doblar! Necesitas **{self.initial_bet:,} {CURRENCY_SYMBOL}** más.",
-                    ephemeral=True
+                    ephemeral=True,
                 )
                 return
 
@@ -263,9 +266,7 @@ class BlackjackView(discord.ui.View):
             await self._finish_game(interaction, result_type="stand")
 
     async def _finish_game(
-        self,
-        interaction: discord.Interaction | None = None,
-        result_type: str = "stand"
+        self, interaction: discord.Interaction | None = None, result_type: str = "stand"
     ) -> None:
         """Resuelve el final de la partida de Blackjack, actualiza balances y BD de forma atomica."""
         self.game_over = True
@@ -339,9 +340,7 @@ class BlackjackView(discord.ui.View):
 
         # 4. Formatear Embed final y citas
         if outcome == "player_bust":
-            quote = random.choice(IVY_BLACKJACK_BUST_QUOTES).format(
-                player_total=player_score
-            )
+            quote = random.choice(IVY_BLACKJACK_BUST_QUOTES).format(player_total=player_score)
             title = f"💥 ¡Te Pasaste de 21! (Bust con {player_score})"
             desc = (
                 f"{quote}\n\n"
@@ -365,7 +364,7 @@ class BlackjackView(discord.ui.View):
                 player_total=player_score,
                 dealer_total=dealer_score,
                 profit=ganancia_neta,
-                symbol=CURRENCY_SYMBOL
+                symbol=CURRENCY_SYMBOL,
             )
             title = f"🎉 ¡Victoria en la Mesa! ({player_score} a {dealer_score})"
             desc = (
@@ -376,8 +375,7 @@ class BlackjackView(discord.ui.View):
             color = discord.Color.green()
         elif outcome == "loss":
             quote = random.choice(IVY_BLACKJACK_LOSS_QUOTES).format(
-                player_total=player_score,
-                dealer_total=dealer_score
+                player_total=player_score, dealer_total=dealer_score
             )
             title = f"💸 La Casa Gana ({dealer_score} a {player_score})"
             desc = (
@@ -387,9 +385,7 @@ class BlackjackView(discord.ui.View):
             )
             color = discord.Color.red()
         else:  # push
-            quote = random.choice(IVY_BLACKJACK_PUSH_QUOTES).format(
-                total=player_score
-            )
+            quote = random.choice(IVY_BLACKJACK_PUSH_QUOTES).format(total=player_score)
             title = f"⚖️ ¡Empate Técnico! ({player_score} a {dealer_score})"
             desc = (
                 f"{quote}\n\n"
@@ -403,11 +399,7 @@ class BlackjackView(discord.ui.View):
             footer_text = f"⚠️ [Magnate] Apuesta insuficiente para resetear inactividad. Mínimo: {req_bet:,} {CURRENCY_SYMBOL} ({int(MIN_RISK_BET_PERCENT * 100)}% de tu fortuna)."
 
         final_embed = self.build_embed(
-            title=title,
-            description=desc,
-            color=color,
-            hide_dealer=False,
-            footer_text=footer_text
+            title=title, description=desc, color=color, hide_dealer=False, footer_text=footer_text
         )
 
         if interaction and not interaction.response.is_done():
@@ -424,9 +416,11 @@ class BlackjackView(discord.ui.View):
             last_rewind = user_data.get("last_paradox_rewind", 0.0)
             now = time.time()
             from .config import PARADOX_COOLDOWN_SECONDS
+
             if inv.get("paradox_chrono", 0) > 0 and (now - last_rewind >= PARADOX_COOLDOWN_SECONDS):
                 self.clear_items()
                 from .views import RewindView
+
                 rewind_view = RewindView(self.cog, self.user_id, self.bet)
                 for item in rewind_view.children:
                     self.add_item(item)

@@ -84,16 +84,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Verify bot starts and initializes DB
+      - name: Verify database initialization
         run: |
-          # Create minimal .env for testing
-          echo "DISCORD_TOKEN=test_token" > .env
+          # No Discord token is needed for this check.  A fake token causes
+          # discord.py to fail with 401 before the database can be inspected.
+          : > .env
           echo "BOT_%=%" >> .env
           echo "DATA_FILE_PATH=stats.db" >> .env
           echo "LOG_LEVEL=DEBUG" >> .env
-          
-          # Start bot in background, wait for DB init, then kill
-          timeout 10 python la_creatura_bot.py 2>&1 | head -20 || true
+
+          python -c "import asyncio; from economy.database import DataManager; asyncio.run(DataManager('stats.db').initialize())"
           
           # Verify database file was created
           if [ -f stats.db ]; then

@@ -9,53 +9,53 @@ IVY_TRIVIA_QUESTIONS: list[dict[str, Any]] = [
     {
         "pregunta": "¿Qué criatura mística de piedra es Ivy, la protectora de Spanish Harlem?",
         "respuestas": ["gargola", "una gargola", "gargoyle"],
-        "pista": "Alas de piedra y garras de mármol tallado."
+        "pista": "Alas de piedra y garras de mármol tallado.",
     },
     {
         "pregunta": "¿En qué emblemático barrio de Nueva York patrulla y tiene su hogar Ivy en Deadlock?",
         "respuestas": ["spanish harlem", "el barrio", "harlem"],
-        "pista": "El famoso vecindario latino del este de Manhattan."
+        "pista": "El famoso vecindario latino del este de Manhattan.",
     },
     {
         "pregunta": "¿Cómo se llama la habilidad definitiva de Ivy donde vuela cargando a un aliado o una bomba?",
         "respuestas": ["air drop", "airdrop"],
-        "pista": "Dos palabras en inglés: entrega express desde los cielos."
+        "pista": "Dos palabras en inglés: entrega express desde los cielos.",
     },
     {
         "pregunta": "¿Cómo se llama el sabio amigo y compañero de Ivy en el diner que siempre le da consejos?",
         "respuestas": ["carlos"],
-        "pista": "Ivy siempre dice: 'Carlos always says...'"
+        "pista": "Ivy siempre dice: 'Carlos always says...'",
     },
     {
         "pregunta": "¿Cómo se llama la habilidad de Ivy que la transforma en una estatua indestructible curando su salud?",
         "respuestas": ["stone form", "forma de piedra", "stoneform"],
-        "pista": "Se convierte en piedra pura para descansar las alas."
+        "pista": "Se convierte en piedra pura para descansar las alas.",
     },
     {
         "pregunta": "¿Cuál es la moneda o recurso místico que juntamos en las calles de Deadlock?",
         "respuestas": ["almas", "souls", "alma"],
-        "pista": "Flotan en orbes brillantes cuando caen los combatientes."
+        "pista": "Flotan en orbes brillantes cuando caen los combatientes.",
     },
     {
         "pregunta": "¿Qué plato tradicional caribeño se prepara en el diner de Carlos los viernes a la noche?",
         "respuestas": ["mofongo"],
-        "pista": "Plátano verde frito y machacado con ajo y chicharrón."
+        "pista": "Plátano verde frito y machacado con ajo y chicharrón.",
     },
     {
         "pregunta": "¿Cómo se llama el sindicato mafioso enemigo que intenta apoderarse de Spanish Harlem?",
         "respuestas": ["sindicato mendoza", "mendoza"],
-        "pista": "Lleva el apellido de la peligrosa familia criminal."
+        "pista": "Lleva el apellido de la peligrosa familia criminal.",
     },
     {
         "pregunta": "¿Cuál es la habilidad de Ivy que arroja un enramado de espinas para enredar y ralentizar enemigos?",
         "respuestas": ["kudzu vine", "kudzu", "enredadera", "espinas"],
-        "pista": "Una planta trepadora japonesa que brota del asfalto."
+        "pista": "Una planta trepadora japonesa que brota del asfalto.",
     },
     {
         "pregunta": "¿Qué tipo de arma empuña Ivy en Deadlock para disparar ráfagas de energía mágica?",
         "respuestas": ["subfusil", "smg", "metralleta"],
-        "pista": "Dispara ráfagas veloces a corta y media distancia."
-    }
+        "pista": "Dispara ráfagas veloces a corta y media distancia.",
+    },
 ]
 
 IVY_WORK_ACTIVITIES: list[str] = [
@@ -66,64 +66,64 @@ IVY_WORK_ACTIVITIES: list[str] = [
     "Hiciste una entrega express por los cielos con Air Drop esquivando cables y chimeneas.",
     "Ayudaste a una doña del barrio a subir las bolsas de la compra hasta el quinto piso volando bajito.",
     "Hiciste guardia nocturna sobrevolando El Barrio antes de que empiece la noche de mofongo.",
-    "Esparciste unas enredaderas de espinas para frenar a unos carteristas en plena avenida."
+    "Esparciste unas enredaderas de espinas para frenar a unos carteristas en plena avenida.",
 ]
 
 IVY_WORK_COOLDOWN_QUOTES: list[str] = [
     "Oye, chacho, hasta las gárgolas nos cansamos. Me estoy poniendo en Stone Form para descansar las alas. Esperá **{time}**.",
     "Calma las plumas, amigo. Carlos siempre dice que apresurarse solo trae líos. Date una vuelta y vuelve en **{time}**.",
     "¡Uff! Mis alas de piedra necesitan un respiro antes de la próxima ronda aérea. Bancame **{time}**.",
-    "Todo a su tiempo, chiquito. El barrio está tranquilo por ahora. Podrás patrullar de nuevo en **{time}**."
+    "Todo a su tiempo, chiquito. El barrio está tranquilo por ahora. Podrás patrullar de nuevo en **{time}**.",
 ]
 
 IVY_PRISON_WARNING_QUOTES: list[str] = [
     "🚨 ¡Pero si estás en el calabozo, chacho! Te advertí que no te hicieras el vivo con la guardia. Te quedan **{time}** de condena tras las rejas.",
     "⛓️ ¿Pretendes patrullar esposado a la pared? ¡Quédate ahí! La policía te tiene guardado por **{time}** más. Nada de mofongo para los presos.",
     "🚔 ¡Ni hablar! Estás pagando condena por andar de manos largas. Te restan **{time}** en cana. Tómate el tiempo para pensar en lo que hiciste.",
-    "🔒 Lo siento, amigo, pero las reglas son las reglas. Te quedan **{time}** a la sombra. Hasta que no cumplas tu condena, no sales a la calle."
+    "🔒 Lo siento, amigo, pero las reglas son las reglas. Te quedan **{time}** a la sombra. Hasta que no cumplas tu condena, no sales a la calle.",
 ]
 
 IVY_COIN_WIN_QUOTES: list[str] = [
     "¡Ja! ¡Viste eso! ¡Cayó **{face}**! La suerte de las alturas nunca me falla.",
     "¡Bien hecho, chacho! Sabía que teníamos buena mano. ¡Duplicaste la apuesta!",
     "¡Woooo! ¡Le pegaste justo al **{face}**! ¡Más almas para la alcancía del equipo!",
-    "¡Eso es! Como dice Carlos: las oportunidades hay que agarrarlas en el aire. ¡Ganaste!"
+    "¡Eso es! Como dice Carlos: las oportunidades hay que agarrarlas en el aire. ¡Ganaste!",
 ]
 
 IVY_COIN_LOSS_QUOTES: list[str] = [
     "Ay, no... Salió **{face}**. Lo siento, chacho, la moneda cayó del lado equivocado esta vez.",
     "Mala pata, amigo... Salió **{face}**. Pero ey, ¡de peores caídas de piedra me he levantado!",
     "Uff, dolió en la billetera... Salió **{face}**. ¡No te me achiques, que la próxima la clavamos!",
-    "¡Ay Dios! La gravedad jugó en contra. Perdiste esas fichas... Hay que saber cuándo replegarse."
+    "¡Ay Dios! La gravedad jugó en contra. Perdiste esas fichas... Hay que saber cuándo replegarse.",
 ]
 
 IVY_RULETA_WIN_NORMAL_QUOTES: list[str] = [
     "¡Esa es! La bolilla frenó en {emoji} **{color}**. ¡Victoria limpia para la banda!",
     "¡Lo conseguimos! ¡Viste que hacer equipo rinde frutos! Te llevas un buen fajo a la bolsa.",
-    "¡Wooo! ¡Cayó en {emoji} **{color}**! ¡Quién dice que vigilar los tejados no da para divertirse un rato!"
+    "¡Wooo! ¡Cayó en {emoji} **{color}**! ¡Quién dice que vigilar los tejados no da para divertirse un rato!",
 ]
 
 IVY_RULETA_WIN_VERDE_QUOTES: list[str] = [
     "¡¿PERO QUÉ VEN MIS OJOS?! 🟢 ¡¡EL CERO VERDE!! ¡Le diste al pleno imposible, chacho! ¡Te llenaste de almas hasta el cogote! (x{multiplicador})",
-    "¡¡SANTO CIELO!! 🟢 ¡Cayo en el verde! ¡Esto va directo a las leyendas de Spanish Harlem! ¡Te forraste de almas con multiplicador x{multiplicador}!"
+    "¡¡SANTO CIELO!! 🟢 ¡Cayo en el verde! ¡Esto va directo a las leyendas de Spanish Harlem! ¡Te forraste de almas con multiplicador x{multiplicador}!",
 ]
 
 IVY_RULETA_LOSS_QUOTES: list[str] = [
     "La bolilla rodó y se clavó en {emoji} **{color}**. La casa no perdona, amigo. Toca afilar la puntería.",
     "¡Ay, qué mala leche! Se fue al {emoji} **{color}**. Como siempre le digo a Abrams: a veces el destino te esquiva.",
-    "Ronda perdida: cayó en {emoji} **{color}**. ¡Tranqui, que las gárgolas no nos rendimos por una mala tirada!"
+    "Ronda perdida: cayó en {emoji} **{color}**. ¡Tranqui, que las gárgolas no nos rendimos por una mala tirada!",
 ]
 
 IVY_ROB_FAIL_QUOTES: list[str] = [
     "🚔 **¡¡ALTO AHÍ!! ¡SONÓ LA ALARMA!**\n🎲 Sacaste un mísero **{dice}** en el dado (necesitabas ≥ {thresh}).\n¡Te vieron venir a tres cuadras, chacho! Te interceptó la patrulla vecinal con las manos en la billetera de {victim}.\n\n⛓️ **A la sombra:** Vas al calabozo por **{duration} minutos** (olvídate de laburar o moverte).\n💸 **Fianza:** Tuviste que soltar **-{fine:,} {currency}** para no empeorar las cosas.",
     "🚨 **¡TE AGARRARON CON LAS MANOS EN LA MASA!**\n🎲 Tiraste un pobre **{dice}** (umbral: ≥ {thresh}).\n¡Elegiste la víctima equivocada! Unos guardias te placaron contra el asfalto frente a {victim}.\n\n⛓️ **Condena:** **{duration} minutos en cana** sin derecho a fianza fácil.\n💸 **Multa:** La policía te confiscó **-{fine:,} {currency}**.",
-    "🛑 **¡MALA IDEA, CHACHO!**\n🎲 Tu tirada fue de **{dice}** (necesitabas ≥ {thresh}).\nTropezaste con una teja suelta y caíste justo enfrente de la comisaría.\n\n⛓️ **Preso:** Te comés **{duration} minutos** tras las rejas.\n💸 **Gastos legales:** Perdiste **-{fine:,} {currency}**."
+    "🛑 **¡MALA IDEA, CHACHO!**\n🎲 Tu tirada fue de **{dice}** (necesitabas ≥ {thresh}).\nTropezaste con una teja suelta y caíste justo enfrente de la comisaría.\n\n⛓️ **Preso:** Te comés **{duration} minutos** tras las rejas.\n💸 **Gastos legales:** Perdiste **-{fine:,} {currency}**.",
 ]
 
 IVY_ROB_SUCCESS_QUOTES: list[str] = [
     "🥷 **¡QUÉ ESCURRIDIZO! ¡GOLPE LIMPIO!**\n🎲 Clavaste un hermoso **{dice}** en el dado (≥ {thresh}).\nTe moviste entre las sombras como gárgola en noche cerrada y le manoteaste **+{loot:,} {currency}** de los bolsillos a {victim}.",
     "🤫 **¡AFANO SILENCIOSO!**\n🎲 Tirada maestra de **{dice}** (≥ {thresh}).\nNi cuenta se dio {victim} mientras le sacabas **+{loot:,} {currency}** de la campera. ¡Andá a esconderlo a la cornisa con `%deposit` antes de que se avive!",
-    "🦅 **¡ZARPAZO DESDE EL TEJADO!**\n🎲 Tiraste un sólido **{dice}** (≥ {thresh}).\nBajaste en picada, le afanaste **+{loot:,} {currency}** a {victim} y remontaste el vuelo antes de que pudiera parpadear."
+    "🦅 **¡ZARPAZO DESDE EL TEJADO!**\n🎲 Tiraste un sólido **{dice}** (≥ {thresh}).\nBajaste en picada, le afanaste **+{loot:,} {currency}** a {victim} y remontaste el vuelo antes de que pudiera parpadear.",
 ]
 
 
@@ -131,38 +131,38 @@ IVY_BLACKJACK_WIN_QUOTES: list[str] = [
     "¡Eso es jugar con cabeza, chacho! Carlos always says: cuando conoces el juego, la suerte es solo un detalle. ¡Victoria limpia!",
     "¡Me ganaste con un total de **{player_total}** contra mi **{dealer_total}**! Te llevas esas almas bien merecidas a la bolsa.",
     "¡Ja! Pareces gárgola de reflejos rápidos en la cornisa. La casa paga la apuesta, ¡felicidades!",
-    "¡Mano ganadora! Ivy no regala almas fácil, pero hoy te las ganaste con pura astucia."
+    "¡Mano ganadora! Ivy no regala almas fácil, pero hoy te las ganaste con pura astucia.",
 ]
 
 IVY_BLACKJACK_NATURAL_QUOTES: list[str] = [
     "¡¡BLACKJACK DIRECTO EN LA MESA!! As y figura desde el saque. Carlos always says: cuando la suerte te sonríe así en el callejón, no mires atrás. ¡Cobraste con bonus (x{payout})!",
     "¡¡VEINTIUNO DE PRIMERA!! ¡Ni me diste tiempo a mover una pluma de piedra! Te llevas un premio de primera.",
-    "¡SANTO CIELO! ¡Blackjack servido! Las cartas cayeron perfectas desde lo alto de la catedral."
+    "¡SANTO CIELO! ¡Blackjack servido! Las cartas cayeron perfectas desde lo alto de la catedral.",
 ]
 
 IVY_BLACKJACK_LOSS_QUOTES: list[str] = [
     "La casa se plantó con **{dealer_total}** contra tu **{player_total}**. Las almas se quedan en la cornisa esta vez, chacho.",
     "Uff... Me tocó mejor mano. Pero ey, en Spanish Harlem siempre hay revancha para los valientes.",
     "Te faltó un empujón de suerte. La gárgola se queda con el pozo, ¡a afilar la puntería para la próxima!",
-    "Cerca, muy cerca... Pero mi **{dealer_total}** superó tu **{player_total}**. Hay que saber cuándo replegarse."
+    "Cerca, muy cerca... Pero mi **{dealer_total}** superó tu **{player_total}**. Hay que saber cuándo replegarse.",
 ]
 
 IVY_BLACKJACK_BUST_QUOTES: list[str] = [
     "💥 **¡TE PASASTE DE 21! (Bust con {player_total})**\nTe fuiste al pasto por arriesgar de más, chacho. Las almas vuelan rápido cuando uno se ciega.",
     "💥 **¡CRACK! ¡SE QUEBRÓ LA MANO!**\nSumaste **{player_total}** y te pasaste de largo. Carlos always says: la avaricia rompe el saco en la timba.",
-    "💥 **¡TE FUISTE DE LARGO!**\nPediste carta con agallas pero terminaste con **{player_total}**. Las fichas van directo para el nido de piedra."
+    "💥 **¡TE FUISTE DE LARGO!**\nPediste carta con agallas pero terminaste con **{player_total}**. Las fichas van directo para el nido de piedra.",
 ]
 
 IVY_BLACKJACK_DEALER_BUST_QUOTES: list[str] = [
     "💥 **¡LA CASA QUEBRÓ!**\nFui a buscar una carta más y me pasé con **{dealer_total}**. ¡Te llevas tus almas y las mías también!",
     "💥 **¡ME FUI AL PASTO!**\nSumé **{dealer_total}** intentando alcanzarte y rompí la baraja. ¡Victoria tuya por demolición!",
-    "💥 **¡QUEBRÉ!**\nLa codicia de gárgola me jugó en contra y terminé con **{dealer_total}**. ¡Almas de vuelta multiplicadas a tus bolsillos!"
+    "💥 **¡QUEBRÉ!**\nLa codicia de gárgola me jugó en contra y terminé con **{dealer_total}**. ¡Almas de vuelta multiplicadas a tus bolsillos!",
 ]
 
 IVY_BLACKJACK_PUSH_QUOTES: list[str] = [
     "⚖️ **¡TABLAS! EMPATE CLAVADO EN {total}.**\nEn Spanish Harlem nadie le roba a nadie: recuperás tus almas íntegras.",
     "⚖️ **¡EMPATE! ({total} a {total}).**\nCarlos always says: un empate no te llena el bolsillo, pero tampoco te deja en la lona. Tomá tu apuesta de vuelta.",
-    "⚖️ **¡MANOS IGUALADAS EN {total}!**\nNi para vos ni para mí. Las almas vuelven a tu cuenta tal cual vinieron."
+    "⚖️ **¡MANOS IGUALADAS EN {total}!**\nNi para vos ni para mí. Las almas vuelven a tu cuenta tal cual vinieron.",
 ]
 
 
@@ -170,29 +170,33 @@ IVY_BLACKJACK_PUSH_QUOTES: list[str] = [
 IVY_SHOP_BUY_QUOTES: list[str] = [
     "¡Trato hecho, vecino! Te envuelvo el **{item_name}** y me guardo las **{price:,} {currency}**. Carlos always says: un buen artilugio en el bolsillo vale más que mil lamentos.",
     "¡Excelente compra! Ese **{item_name}** te va a salvar las plumas en las calles de Spanish Harlem.",
-    "¡Mercancía entregada! Guardá bien tu **{item_name}** en la mochila con `%inv` antes de que algún carterista te lo fiche."
+    "¡Mercancía entregada! Guardá bien tu **{item_name}** en la mochila con `%inv` antes de que algún carterista te lo fiche.",
 ]
 
 IVY_SHOP_USE_QUOTES: list[str] = [
     "🌿 ¡Artilugio activado! Sentís el poder del **{item_name}** corriendo por tus venas.",
     "🪨 ¡Efecto desatado! Carlos always says: las herramientas están para usarse en el momento justo.",
-    "✨ ¡Activación exitosa! El **{item_name}** ya está haciendo efecto en tu jornada."
+    "✨ ¡Activación exitosa! El **{item_name}** ya está haciendo efecto en tu jornada.",
 ]
 
 # --- Frases de Lotería y Pozo del Barrio ---
 IVY_LOTTERY_BUY_QUOTES: list[str] = [
     "🎟️ ¡Boletos anotados en el libro de la catedral! Compraste **{count} ticket(s)** por **{cost:,} {currency}**. ¡Mucha suerte en el sorteo!",
     "🎟️ ¡Ficha jugada! Tus **{count} número(s)** ya están dando vueltas en el bolillero del barrio. ¡El pozo no para de crecer!",
-    "🎟️ ¡Bien ahí, vecino! Metiste **{count} ticket(s)** a la urna de piedra. Si sale tu nombre, te forrás hasta las muelas."
+    "🎟️ ¡Bien ahí, vecino! Metiste **{count} ticket(s)** a la urna de piedra. Si sale tu nombre, te forrás hasta las muelas.",
 ]
 
 IVY_LOTTERY_WIN_QUOTES: list[str] = [
-    "🎉 ¡¡ATENCIÓN A TODAS LAS CORNISAS DE SPANISH HARLEM!! ¡EL BOLILLERO HABLÓ!\n\n"
-    "El afortunado vecino que se lleva el pozo acumulado de **{jackpot:,} {currency}** es... ¡¡{winner_mention}!!\n"
-    "Carlos always says: la fortuna visita a quien menos la espera pero más la festeja. ¡A disfrutar esas almas!",
-    "🏆 ¡¡SORTEO EXTRAORDINARIO DEL POZO DEL BARRIO!!\n\n"
-    "¡Revisamos la urna de piedra y el boleto ganador pertenece a **{winner_mention}**!\n"
-    "Se acredita un premio histórico de **{jackpot:,} {currency}** directo a su cuenta. ¡Que corra el mofongo esta noche!"
+    (
+        "🎉 ¡¡ATENCIÓN A TODAS LAS CORNISAS DE SPANISH HARLEM!! ¡EL BOLILLERO HABLÓ!\n\n"
+        "El afortunado vecino que se lleva el pozo acumulado de **{jackpot:,} {currency}** es... ¡¡{winner_mention}!!\n"
+        "Carlos always says: la fortuna visita a quien menos la espera pero más la festeja. ¡A disfrutar esas almas!"
+    ),
+    (
+        "🏆 ¡¡SORTEO EXTRAORDINARIO DEL POZO DEL BARRIO!!\n\n"
+        "¡Revisamos la urna de piedra y el boleto ganador pertenece a **{winner_mention}**!\n"
+        "Se acredita un premio histórico de **{jackpot:,} {currency}** directo a su cuenta. ¡Que corra el mofongo esta noche!"
+    ),
 ]
 
 
@@ -200,5 +204,5 @@ IVY_LOTTERY_WIN_QUOTES: list[str] = [
 IVY_PARADOX_REWIND_QUOTES: list[str] = [
     "⏳ **¡PARADOJA TEMPORAL EN ACCIÓN!**\n¿Sentiste ese zumbido en el aire? El segundero acaba de girar al revés. Paradox abrió una grieta temporal y tus **{amount:,} {currency}** están de vuelta en el bolsillo como si esa tirada nunca hubiese ocurrido.",
     "⌛ **¡FRACTURA CRONOLÓGICA ACTIVADA!**\nCarlos always says: el tiempo no vuelve atrás... bueno, a menos que Paradox ande cerca tocando sus relojes raros. ¡Tus **{amount:,} {currency}** volvieron intactas a tu mano!",
-    "🕰️ **¡INTERCAMBIO PARADÓJICO CONSUMADO!**\nLa aguja del reloj retrocedió un compás. Esa mala racha acaba de ser borrada de la historia de Spanish Harlem. Recuperaste tus **{amount:,} {currency}**."
+    "🕰️ **¡INTERCAMBIO PARADÓJICO CONSUMADO!**\nLa aguja del reloj retrocedió un compás. Esa mala racha acaba de ser borrada de la historia de Spanish Harlem. Recuperaste tus **{amount:,} {currency}**.",
 ]
