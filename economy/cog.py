@@ -884,11 +884,32 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
     # These methods bridge slash commands (app_commands) with existing logic.
     # They extract the same data from Interaction that prefix commands get from Context.
 
-    async def _bal_impl(self, interaction: discord.Interaction, target: discord.User):
+    def _get_source_info(self, source):
+        """Extrae info común de Interaction o Context."""
+        if hasattr(source, 'user'):  # Interaction
+            return source.user.id, source.user, source.guild, source.channel
+        else:  # Context
+            return source.author.id, source.author, source.guild, source.channel
+
+    async def _send_response(self, source, embed, view=None, ephemeral=False):
+        """Envía respuesta compatible con Interaction y Context."""
+        if hasattr(source, 'response'):  # Interaction
+            if hasattr(source.response, 'is_done') and source.response.is_done():
+                await source.followup.send(embed=embed, view=view, ephemeral=ephemeral)
+            else:
+                await source.response.send_message(embed=embed, view=view, ephemeral=ephemeral)
+        else:  # Context
+            if view:
+                await source.reply(embed=embed, view=view)
+            else:
+                await source.reply(embed=embed)
+
+    async def _bal_impl(self, source, target: discord.User):
         """Implementación compartida para /bal y %bal."""
+        user_id, author, guild, channel = self._get_source_info(source)
         member = target
-        if interaction.guild:
-            member = interaction.guild.get_member(target.id) or target
+        if guild:
+            member = guild.get_member(target.id) or target
         
         async with self.db.lock:
             user = await self.db.get_user_data(target.id)
@@ -917,11 +938,11 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             embed.add_field(name="🕊️ Estado Legal", value="Ciudadano libre y sin causas pendientes.", inline=False)
 
         embed.set_footer(text="Helping people's what I do.")
-        await interaction.response.send_message(embed=embed)
+        await self._send_response(source, embed)
 
-    async def _work_impl(self, interaction: discord.Interaction):
+    async def _work_impl(self, source):
         """Implementación compartida para /work y %work."""
-        user_id = interaction.user.id
+        user_id, author, guild, channel = self._get_source_info(source)
 
         async with self.db.lock:
             user = await self.db.get_user_data(user_id)
@@ -938,7 +959,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                     color=discord.Color.red()
                 )
                 embed.set_footer(text="Ivy no deja salir a los rateros hasta que cumplan la condena.")
-                await interaction.response.send_message(embed=embed)
+                await self._send_response(source, embed)
                 return
 
             # 2. Validación de Cooldown
@@ -958,7 +979,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                     color=discord.Color.light_grey()
                 )
                 embed.set_footer(text="Being a statue isn't riveting, but it beats being exhausted!")
-                await interaction.response.send_message(embed=embed)
+                await self._send_response(source, embed)
                 return
 
             # 3. Asignación de Recompensa
@@ -990,10 +1011,10 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         else:
             footer_text = f"Ivy te espera para la próxima ronda en {WORK_COOLDOWN // 60} minutos."
         embed.set_footer(text=footer_text)
-        await interaction.response.send_message(embed=embed)
+        await self._send_response(source, embed)
 
-        if interaction.guild:
-            leader_id, leader_wealth = self._top_leader_cache.get(interaction.guild.id, (0, 0))
+        if guild:
+            leader_id, leader_wealth = self._top_leader_cache.get(guild.id, (0, 0))
             user_total = user["wallet"] + user["bank"]
             if user_id == leader_id or user_total >= leader_wealth:
                 await self.actualizar_rol_millonario(interaction.guild, announce_channel=interaction.channel)
@@ -1002,34 +1023,649 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
     #                    SLASH COMMAND IMPLEMENTATIONS (CONTINUED)
     # --------------------------------------------------------------------------
 
-    async def _coin_impl(self, interaction: discord.Interaction, monto: str):
+    async def _coin_impl(self, source, eleccion: str, monto: str):
         """Implementación compartida para /coin y %coin."""
-        user_id = interaction.user.id
-        eleccion = "cara"  # For slash commands, we use a choice parameter instead
-        # Note: The slash command doesn't have eleccion as a parameter, 
-        # so we'll handle the choice in the slash command itself
-        # This is a simplified version - the full logic would need the choice
-        await interaction.response.send_message("⚠️ /coin requiere eleccion (cara/cruz). Usa el comando de prefijo %coin por ahora.")
+        user_id, author, guild, channel = self._get_source_info(source)
+        
+        eleccion_clean = eleccion.lower().strip()
+        alias_map = {
+            "cara": "cara", "c": "cara", "heads": "cara", "h": "cara",
+            "cruz": "cruz", "x": "cruz", "tails": "cruz", "t": "cruz"
+        }
 
-    async def _ruleta_impl(self, interaction: discord.Interaction, color: str, monto: str):
+        if eleccion_clean not in alias_map:
+            embed = discord.Embed(
+                title="❌ Elección Inválida",
+                description=f"¡Ey, chacho! Tienes que elegir **cara** o **cruz**.\n"
+                           f"*Ejemplo:* `{channel and channel.name or '%'}coin cara 50`",
+                color=discord.Color.red()
+            )
+            await self._send_response(source, embed)
+            return
+
+        lado_elegido = alias_map[eleccion_clean]
+        now = time.time()
+
+        async with self.db.lock:
+            user = await self.db.get_user_data(user_id)
+            wallet = user["wallet"]
+
+            parsed_amount = self._parse_amount(monto, wallet)
+            if parsed_amount is None:
+                embed = discord.Embed(
+                    title="❌ Monto Inválido",
+                    description="Pon un monto válido en números positivos o usa `all` si tienes agallas de gárgola.",
+                    color=discord.Color.red()
+                )
+                await self._send_response(source, embed)
+                return
+
+            if parsed_amount > wallet or parsed_amount == 0:
+                embed = discord.Embed(
+                    title="❌ Fondos Insuficientes",
+                    description=f"¡Te falta plata en los bolsillos, chacho! Solo tienes **{wallet:,} {CURRENCY_SYMBOL}** en mano.",
+                    color=discord.Color.red()
+                )
+                await self._send_response(source, embed)
+                return
+
+            # Tirada 50/50
+            resultado = random.choice(COIN_FACES)
+
+            if resultado == lado_elegido:
+                ganancia = int(parsed_amount * (COIN_MULTIPLIER - 1.0))
+                user["wallet"] += ganancia
+                user["stats"]["gambles_won"] = user["stats"].get("gambles_won", 0) + 1
+
+                quote = random.choice(IVY_COIN_WIN_QUOTES).format(face=resultado.upper())
+                embed = discord.Embed(
+                    title=f"🪙 ¡Moneda al Aire: Salió {resultado.upper()}!",
+                    description=f"{quote}\n\n"
+                                f"🎉 **Ganancia neta:** +{ganancia:,} {CURRENCY_SYMBOL}\n"
+                                f"💵 **Billetera actual:** {user['wallet']:,} {CURRENCY_SYMBOL}",
+                    color=discord.Color.green()
+                )
+                embed.set_footer(text="Who says vigilante work doesn't pay the bills?")
+            else:
+                user["wallet"] -= parsed_amount
+                user["stats"]["gambles_lost"] = user["stats"].get("gambles_lost", 0) + 1
+                user["last_loss"] = {
+                    "amount": parsed_amount,
+                    "game": f"Cara o Cruz ({resultado.upper()})",
+                    "timestamp": now,
+                    "reverted": False,
+                }
+                tax = max(1, int(parsed_amount * 0.01))
+                lottery = await self.db.get_lottery_data()
+                lottery["jackpot"] = lottery.get("jackpot", LOTTERY_BASE_JACKPOT) + tax
+
+                quote = random.choice(IVY_COIN_LOSS_QUOTES).format(face=resultado.upper())
+                embed = discord.Embed(
+                    title=f"🪙 Moneda al Aire: Salió {resultado.upper()}",
+                    description=f"{quote}\n\n"
+                                f"💸 **Pérdida:** -{parsed_amount:,} {CURRENCY_SYMBOL}\n"
+                                f"💵 **Te quedaron:** {user['wallet']:,} {CURRENCY_SYMBOL}",
+                    color=discord.Color.red()
+                )
+                embed.set_footer(text="I always get a little nervous before taking big risks...")
+
+            # Evaluar y registrar actividad de riesgo en la misma transaccion atomica
+            user_total = user["wallet"] + user["bank"]
+            is_richest, is_valid_reset, req_bet = self._evaluar_riesgo_apostador(
+                user_id, parsed_amount, user_total, guild
+            )
+            if not is_richest or is_valid_reset:
+                user["last_gamble"] = time.time()
+
+            await self.db.save()
+
+        if is_richest and not is_valid_reset:
+            embed.set_footer(
+                text=f"⚠️ [Magnate] Apuesta insuficiente para resetear inactividad. Mínimo: {req_bet:,} {CURRENCY_SYMBOL} ({int(MIN_RISK_BET_PERCENT * 100)}% de tu fortuna)."
+            )
+
+        # RewindView si hay Paradox Chrono y está en cooldown
+        view = None
+        if resultado != lado_elegido:
+            async with self.db.lock:
+                user = await self.db.get_user_data(user_id)
+                inv = user.get("inventory", {})
+                last_rewind = user.get("last_paradox_rewind", 0.0)
+                if inv.get("paradox_chrono", 0) > 0 and (now - last_rewind >= PARADOX_COOLDOWN_SECONDS):
+                    view = RewindView(self, user_id, parsed_amount)
+
+        await self._send_response(source, embed, view=view)
+
+        if guild:
+            leader_id, leader_wealth = self._top_leader_cache.get(guild.id, (0, 0))
+            if user_id == leader_id or user_total >= leader_wealth:
+                await self.actualizar_rol_millonario(guild, announce_channel=channel)
+
+    async def _ruleta_impl(self, source, color: str, monto: str):
         """Implementación compartida para /ruleta y %ruleta."""
-        await interaction.response.send_message("⚠️ /ruleta en desarrollo. Usa %ruleta por ahora.")
+        user_id, author, guild, channel = self._get_source_info(source)
+        
+        color_clean = color.lower().strip()
+        if color_clean not in RULETA_COLOR_MAP:
+            embed = discord.Embed(
+                title="❌ Color Inválido",
+                description=f"Ese color no juega en esta mesa, amigo. Elige bien:\n"
+                           f"🔴 **Rojo** (`r` o `rojo`) - Paga x{RULETA_PAYOUT_ROJO}\n"
+                           f"⚫ **Negro** (`b` o `negro`) - Paga x{RULETA_PAYOUT_NEGRO}\n"
+                           f"🟢 **Verde** (`g` o `verde`) - Paga x{RULETA_PAYOUT_VERDE} *(¡Alto riesgo!)*\n"
+                           f"*Ejemplo:* `{channel and channel.name or '%'}ruleta r 100`",
+                color=discord.Color.red()
+            )
+            await self._send_response(source, embed)
+            return
 
-    async def _deposit_impl(self, interaction: discord.Interaction, monto: str):
+        color_elegido = RULETA_COLOR_MAP[color_clean]
+        now = time.time()
+
+        async with self.db.lock:
+            user = await self.db.get_user_data(user_id)
+            wallet = user["wallet"]
+
+            parsed_amount = self._parse_amount(monto, wallet)
+            if parsed_amount is None:
+                embed = discord.Embed(
+                    title="❌ Monto Inválido",
+                    description="Ingresa una cantidad válida o escribe `all`.",
+                    color=discord.Color.red()
+                )
+                await self._send_response(source, embed)
+                return
+
+            if parsed_amount > wallet:
+                embed = discord.Embed(
+                    title="❌ Fondos Insuficientes",
+                    description=f"No tienes tantas almas en la mano. Tu saldo es de **{wallet:,} {CURRENCY_SYMBOL}**.",
+                    color=discord.Color.red()
+                )
+                await self._send_response(source, embed)
+                return
+
+            colores_posibles = ["rojo", "negro", "verde"]
+            pesos = [RULETA_WEIGHT_ROJO, RULETA_WEIGHT_NEGRO, RULETA_WEIGHT_VERDE]
+            resultado = random.choices(colores_posibles, weights=pesos, k=1)[0]
+
+            if resultado == "rojo":
+                color_emoji = "🔴"
+                multiplicador = RULETA_PAYOUT_ROJO
+            elif resultado == "negro":
+                color_emoji = "⚫"
+                multiplicador = RULETA_PAYOUT_NEGRO
+            else:
+                color_emoji = "🟢"
+                multiplicador = RULETA_PAYOUT_VERDE
+
+            if resultado == color_elegido:
+                ganancia = int(parsed_amount * (multiplicador - 1.0))
+                user["wallet"] += ganancia
+                user["stats"]["gambles_won"] = user["stats"].get("gambles_won", 0) + 1
+
+                if resultado == "verde":
+                    quote = random.choice(IVY_RULETA_WIN_VERDE_QUOTES).format(multiplicador=multiplicador)
+                else:
+                    quote = random.choice(IVY_RULETA_WIN_NORMAL_QUOTES).format(
+                        emoji=color_emoji, color=resultado.upper()
+                    )
+
+                embed = discord.Embed(
+                    title=f"🎰 ¡La bolilla descansó en {color_emoji} {resultado.upper()}!",
+                    description=f"{quote}\n\n"
+                                f"💰 **Ganancia:** +{ganancia:,} {CURRENCY_SYMBOL}\n"
+                                f"💵 **En mano:** {user['wallet']:,} {CURRENCY_SYMBOL}",
+                    color=discord.Color.green()
+                )
+                embed.set_footer(text="¡Now that's what I call a lucky bounce!")
+            else:
+                user["wallet"] -= parsed_amount
+                user["stats"]["gambles_lost"] = user["stats"].get("gambles_lost", 0) + 1
+                user["last_loss"] = {
+                    "amount": parsed_amount,
+                    "game": f"Ruleta ({color_emoji} {resultado.upper()})",
+                    "timestamp": now,
+                    "reverted": False,
+                }
+                tax = max(1, int(parsed_amount * 0.01))
+                lottery = await self.db.get_lottery_data()
+                lottery["jackpot"] = lottery.get("jackpot", LOTTERY_BASE_JACKPOT) + tax
+
+                quote = random.choice(IVY_RULETA_LOSS_QUOTES).format(
+                    emoji=color_emoji, color=resultado.upper()
+                )
+                embed = discord.Embed(
+                    title=f"🎰 La bolilla frenó en {color_emoji} {resultado.upper()}",
+                    description=f"{quote}\n\n"
+                                f"💸 **Pérdida:** -{parsed_amount:,} {CURRENCY_SYMBOL}\n"
+                                f"💵 **Billetera restante:** {user['wallet']:,} {CURRENCY_SYMBOL}",
+                    color=discord.Color.red()
+                )
+                embed.set_footer(text="Sometimes you have to make your own opportunities...")
+
+            # Evaluar y registrar actividad de riesgo
+            user_total = user["wallet"] + user["bank"]
+            is_richest, is_valid_reset, req_bet = self._evaluar_riesgo_apostador(
+                user_id, parsed_amount, user_total, guild
+            )
+            if not is_richest or is_valid_reset:
+                user["last_gamble"] = time.time()
+
+            await self.db.save()
+
+        if is_richest and not is_valid_reset:
+            embed.set_footer(
+                text=f"⚠️ [Magnate] Apuesta insuficiente para resetear inactividad. Mínimo: {req_bet:,} {CURRENCY_SYMBOL} ({int(MIN_RISK_BET_PERCENT * 100)}% de tu fortuna)."
+            )
+
+        # RewindView si hay Paradox Chrono
+        view = None
+        if resultado != color_elegido:
+            async with self.db.lock:
+                user = await self.db.get_user_data(user_id)
+                inv = user.get("inventory", {})
+                last_rewind = user.get("last_paradox_rewind", 0.0)
+                if inv.get("paradox_chrono", 0) > 0 and (now - last_rewind >= PARADOX_COOLDOWN_SECONDS):
+                    view = RewindView(self, user_id, parsed_amount)
+
+        await self._send_response(source, embed, view=view)
+
+        if guild:
+            leader_id, leader_wealth = self._top_leader_cache.get(guild.id, (0, 0))
+            if user_id == leader_id or user_total >= leader_wealth:
+                await self.actualizar_rol_millonario(guild, announce_channel=channel)
+
+    async def _deposit_impl(self, source, monto: str):
         """Implementación compartida para /deposit y %deposit."""
-        await interaction.response.send_message("⚠️ /deposit en desarrollo. Usa %deposit por ahora.")
+        user_id, author, guild, channel = self._get_source_info(source)
 
-    async def _withdraw_impl(self, interaction: discord.Interaction, monto: str):
+        async with self.db.lock:
+            user = await self.db.get_user_data(user_id)
+            wallet = user["wallet"]
+
+            amount = self._parse_amount(monto, wallet)
+            if amount is None or amount <= 0:
+                embed = discord.Embed(
+                    title="❌ Monto Inválido",
+                    description="Pon un número válido de almas a resguardar o escribe `all`.",
+                    color=discord.Color.red()
+                )
+                await self._send_response(source, embed)
+                return
+
+            if amount > wallet:
+                embed = discord.Embed(
+                    title="❌ Fondos Insuficientes",
+                    description=f"¡No tenés esa cantidad en mano, amigo! Solo tienes **{wallet:,} {CURRENCY_SYMBOL}** en los bolsillos.",
+                    color=discord.Color.red()
+                )
+                await self._send_response(source, embed)
+                return
+
+            user["wallet"] -= amount
+            user["bank"] += amount
+            await self.db.save()
+
+            embed = discord.Embed(
+                title="🪨 ¡Almas Aseguradas en las Alturas!",
+                description=f"Subí volando a la cornisa más alta y guardé **{amount:,} {CURRENCY_SYMBOL}** en el nido de piedra.\n"
+                            f"Ni el ladrón más ágil del sindicato se anima a trepar hasta acá arriba.",
+                color=discord.Color.blue()
+            )
+            embed.add_field(name="💵 En Mano", value=f"{user['wallet']:,} {CURRENCY_SYMBOL}")
+            embed.add_field(name="🪨 En la Cornisa", value=f"{user['bank']:,} {CURRENCY_SYMBOL}")
+            embed.set_footer(text="Safety first! I'll watch over your stash.")
+
+        await self._send_response(source, embed)
+
+    async def _withdraw_impl(self, source, monto: str):
         """Implementación compartida para /withdraw y %withdraw."""
-        await interaction.response.send_message("⚠️ /withdraw en desarrollo. Usa %withdraw por ahora.")
+        user_id, author, guild, channel = self._get_source_info(source)
 
-    async def _pay_impl(self, interaction: discord.Interaction, usuario: discord.User, monto: str):
+        async with self.db.lock:
+            user = await self.db.get_user_data(user_id)
+            bank_bal = user["bank"]
+
+            amount = self._parse_amount(monto, bank_bal)
+            if amount is None or amount <= 0:
+                embed = discord.Embed(
+                    title="❌ Monto Inválido",
+                    description="Ingresa un monto válido o usa `all`.",
+                    color=discord.Color.red()
+                )
+                await self._send_response(source, embed)
+                return
+
+            if amount > bank_bal:
+                embed = discord.Embed(
+                    title="❌ Fondos Insuficientes",
+                    description=f"No tienes tantas almas guardadas en la cornisa. Tu depósito es de **{bank_bal:,} {CURRENCY_SYMBOL}**.",
+                    color=discord.Color.red()
+                )
+                await self._send_response(source, embed)
+                return
+
+            user["bank"] -= amount
+            user["wallet"] += amount
+            await self.db.save()
+
+            embed = discord.Embed(
+                title="💸 Almas Bajadas a la Calle",
+                description=f"Te traje **{amount:,} {CURRENCY_SYMBOL}** desde la cornisa.\n"
+                            f"⚠️ **Aviso de gárgola:** Ahora que las llevas encima, cualquiera con `{channel and channel.name or '%'}rob` te las puede manotear si andas distraído.",
+                color=discord.Color.gold()
+            )
+            embed.add_field(name="💵 En Mano", value=f"{user['wallet']:,} {CURRENCY_SYMBOL}")
+            embed.add_field(name="🪨 En la Cornisa", value=f"{user['bank']:,} {CURRENCY_SYMBOL}")
+            embed.set_footer(text="Cuida tu espalda en los callejones oscuros.")
+
+        await self._send_response(source, embed)
+
+    async def _pay_impl(self, source, receiver: discord.User, monto: str):
         """Implementación compartida para /pay y %pay."""
-        await interaction.response.send_message("⚠️ /pay en desarrollo. Usa %pay por ahora.")
+        user_id, author, guild, channel = self._get_source_info(source)
+        receiver_id = receiver.id
 
-    async def _rob_impl(self, interaction: discord.Interaction, victima: discord.User):
+        if receiver_id == user_id:
+            embed = discord.Embed(
+                title="❌ Transferencia Inválida",
+                description="¿Pasarte plata de un bolsillo al otro? No inventes cosas raras, chacho.",
+                color=discord.Color.red()
+            )
+            await self._send_response(source, embed)
+            return
+
+        if receiver.bot:
+            embed = discord.Embed(
+                title="💖 Gesto Agradecido",
+                description="Aprecio el gesto de corazón, amigo, pero yo no cobro por cuidar el barrio. "
+                           "Ayudar a la gente es lo mío. ¡Guárdate esas almas para equiparte mejor!",
+                color=discord.Color.teal()
+            )
+            await self._send_response(source, embed)
+            return
+
+        async with self.db.lock:
+            sender = await self.db.get_user_data(user_id)
+            wallet = sender["wallet"]
+
+            amount = self._parse_amount(monto, wallet)
+            if amount is None or amount <= 0:
+                embed = discord.Embed(
+                    title="❌ Monto Inválido",
+                    description="Pon un número válido de almas para transferir o usa `all`.",
+                    color=discord.Color.red()
+                )
+                await self._send_response(source, embed)
+                return
+
+            if amount > wallet:
+                embed = discord.Embed(
+                    title="❌ Fondos Insuficientes",
+                    description=f"No tienes suficientes almas en mano. En tus bolsillos solo hay **{wallet:,} {CURRENCY_SYMBOL}**.",
+                    color=discord.Color.red()
+                )
+                await self._send_response(source, embed)
+                return
+
+            receiver_data = await self.db.get_user_data(receiver_id)
+
+            sender["wallet"] -= amount
+            receiver_data["wallet"] += amount
+            await self.db.save()
+
+        embed = discord.Embed(
+            title="🌿 ¡Kudzu Connection Financiero!",
+            description=f"**{author.display_name}** compartió un lazo de almas con **{receiver.display_name}** entregándole **{amount:,} {CURRENCY_SYMBOL}**.\n\n"
+                        f"*«¡Eso es jugar en equipo! Como siempre le digo al grupo: si nos apoyamos entre nosotros, nadie nos puede bajar.»*",
+            color=discord.Color.teal()
+        )
+        embed.add_field(name=f"Bolsillo de {author.display_name}", value=f"{sender['wallet']:,} {CURRENCY_SYMBOL}", inline=True)
+        embed.add_field(name=f"Bolsillo de {receiver.display_name}", value=f"{receiver_data['wallet']:,} {CURRENCY_SYMBOL}", inline=True)
+        embed.set_footer(text="Now that's what I call teamwork!")
+        await self._send_response(source, embed)
+
+        if guild:
+            leader_id, leader_wealth = self._top_leader_cache.get(guild.id, (0, 0))
+            sender_total = sender["wallet"] + sender["bank"]
+            receiver_total = receiver_data["wallet"] + receiver_data["bank"]
+            if user_id == leader_id or receiver_total >= leader_wealth:
+                await self.actualizar_rol_millonario(guild, announce_channel=channel)
+
+    async def _rob_impl(self, source, victim: discord.User):
         """Implementación compartida para /rob y %rob."""
-        await interaction.response.send_message("⚠️ /rob en desarrollo. Usa %rob por ahora.")
+        user_id, author, guild, channel = self._get_source_info(source)
+        victim_id = victim.id
+
+        if victim_id == user_id:
+            embed = discord.Embed(
+                title="❌ Robo Inválido",
+                description="¿Te vas a robar a ti mismo, chacho? Ni Bebop haría semejante tontería. ¡Buscate algo útil que hacer!",
+                color=discord.Color.red()
+            )
+            await self._send_response(source, embed)
+            return
+
+        if victim.bot:
+            if victim_id == self.bot.user.id:
+                async with self.db.lock:
+                    robber = await self.db.get_user_data(user_id)
+                    attempts = robber["stats"].get("ivy_rob_attempts", 0) + 1
+                    robber["stats"]["ivy_rob_attempts"] = attempts
+
+                    if attempts >= 3:
+                        robber["stats"]["ivy_rob_attempts"] = 0
+                        robber["prison_until"] = time.time() + PRISON_DURATION
+                        multa_cobrada = min(robber["wallet"], ROB_FAIL_FINE)
+                        robber["wallet"] -= multa_cobrada
+                        await self.db.save()
+
+                        embed = discord.Embed(
+                            title="🚨 **¡TE PASASTE DE LISTO, CHACHO!**",
+                            description=f"Intentaste robarle a Ivy por tercera vez y la policía te dejó sin salida.\n\n"
+                                        f"⛓️ **Condena:** {PRISON_DURATION // 60} minutos tras las rejas\n"
+                                        f"💸 **Multa:** -{multa_cobrada:,} {CURRENCY_SYMBOL}",
+                            color=discord.Color.dark_red()
+                        )
+                        await self._send_response(source, embed)
+                        return
+
+                    await self.db.save()
+
+                remaining = 3 - attempts
+                embed = discord.Embed(
+                    title="❌ ¡Oye!",
+                    description=f"¿Estás intentando meterle la mano en el bolsillo a una gárgola de piedra maciza? "
+                                f"¡Te vas a romper los dedos! Además, yo protejo este barrio, no me afanes a mí.\n\n"
+                                f"⚠️ **Intento {attempts}/3**. Si vuelves a probar, la patrulla te mete preso.",
+                    color=discord.Color.orange()
+                )
+                await self._send_response(source, embed)
+                return
+
+            embed = discord.Embed(
+                title="❌ ¡Oye!",
+                description="¿Estás intentando meterle la mano en el bolsillo a una gárgola de piedra maciza? "
+                           "¡Te vas a romper los dedos! Además, yo protejo este barrio, no me afanes a mí.",
+                color=discord.Color.orange()
+            )
+            await self._send_response(source, embed)
+            return
+
+        async with self.db.lock:
+            robber = await self.db.get_user_data(user_id)
+            victim_data = await self.db.get_user_data(victim_id)
+            now = time.time()
+
+            # 1. ¿El ladrón está preso?
+            in_prison, remaining_prison = self._is_in_prison(robber)
+            if in_prison:
+                time_str = self._format_time(remaining_prison)
+                quote = random.choice(IVY_PRISON_WARNING_QUOTES).format(time=time_str)
+                embed = discord.Embed(
+                    title="🚨 ¡Estás Tras las Rejas!",
+                    description=quote,
+                    color=discord.Color.red()
+                )
+                await self._send_response(source, embed)
+                return
+
+            # 2. Cooldown de robo
+            last_rob = robber.get("last_rob", 0.0)
+            elapsed = now - last_rob
+            if elapsed < ROB_COOLDOWN:
+                remaining_cd = int(ROB_COOLDOWN - elapsed)
+                time_str = self._format_time(remaining_cd)
+                embed = discord.Embed(
+                    title="🤫 Calma los impulsos, chacho",
+                    description=f"La policía y los vecinos están alertas. Esperá **{time_str}** a que se enfríe la calle antes del próximo golpe.",
+                    color=discord.Color.orange()
+                )
+                embed.set_footer(text="Don't got time to walk into another patrol.")
+                await self._send_response(source, embed)
+                return
+
+            # 3. Fondos mínimos de la víctima en mano
+            if victim_data["wallet"] < ROB_VICTIM_MIN_WALLET:
+                embed = discord.Embed(
+                    title="🦴 Sin Botín",
+                    description=f"¡Dejá tranquilo a {victim.mention}! Apenas tiene `{victim_data['wallet']}` {CURRENCY_SYMBOL} en los bolsillos. "
+                                f"En Spanish Harlem nos cuidamos entre vecinos, no le robamos a los secos.",
+                    color=discord.Color.orange()
+                )
+                await self._send_response(source, embed)
+                return
+
+            # 4. Verificación de Amuleto de Piedra de la víctima (Defensa 100%)
+            victim_inv = victim_data.setdefault("inventory", {})
+            if victim_inv.get("stone_charm", 0) > 0:
+                victim_inv["stone_charm"] -= 1
+                robber["last_rob"] = now
+                robber["stats"]["times_robbed"] = robber["stats"].get("times_robbed", 0) + 1
+
+                # Ladrón atrapado y multado
+                robber["prison_until"] = now + PRISON_DURATION
+                multa_cobrada = min(robber["wallet"], ROB_FAIL_FINE)
+                robber["wallet"] -= multa_cobrada
+
+                # Verificar si el ladrón posee Fianza Policial
+                robber_inv = robber.setdefault("inventory", {})
+                used_bail = False
+                if robber_inv.get("bail_bond", 0) > 0:
+                    robber_inv["bail_bond"] -= 1
+                    robber["prison_until"] = 0.0
+                    used_bail = True
+
+                await self.db.save()
+
+                desc = (
+                    f"🪨 **¡EL AMULETO DE PIEDRA DE {victim.mention} BLOQUEÓ EL ASALTO!**\n\n"
+                    f"Al acercarte con sigilo, el amuleto de obsidiana de la víctima destelló con magia de gárgola "
+                    f"y te congeló las manos al 100%. ¡El amuleto se sacrificó pero la patrulla te cayó encima!\n\n"
+                    f"💸 **Multa policial:** -{multa_cobrada:,} {CURRENCY_SYMBOL}\n"
+                )
+                if used_bail:
+                    desc += "🚔 **¡Tu Fianza Policial te salvó!** Un abogado del barrio te sacó de la comisaría al instante sin cumplir condena."
+                else:
+                    desc += f"⛓️ **Condena:** {PRISON_DURATION // 60} minutos tras las rejas."
+
+                embed = discord.Embed(
+                    title="🛡️ ¡Defensa Gargolesca Absoluta!",
+                    description=desc,
+                    color=discord.Color.dark_purple()
+                )
+                embed.set_footer(text="Carlos always says: meterle la mano a quien lleva un amuleto es terminar en cana seguro.")
+                await self._send_response(source, embed)
+                return
+
+            robber["last_rob"] = now
+            robber["stats"]["times_robbed"] = robber["stats"].get("times_robbed", 0) + 1
+
+            # 5. Verificación de Guante de Cerrajero del ladrón
+            robber_inv = robber.setdefault("inventory", {})
+            used_lockpick = False
+            if robber_inv.get("lockpick", 0) > 0:
+                robber_inv["lockpick"] -= 1
+                effective_threshold = LOCKPICK_FAIL_THRESHOLD
+                used_lockpick = True
+            else:
+                effective_threshold = ROB_FAIL_THRESHOLD
+
+            # Tirada de D20
+            dado = random.randint(ROB_DICE_MIN, ROB_DICE_MAX)
+
+            if dado < effective_threshold:
+                # --- ROBO FALLIDO: CÁRCEL Y MULTA ---
+                robber["prison_until"] = now + PRISON_DURATION
+                multa_cobrada = min(robber["wallet"], ROB_FAIL_FINE)
+                robber["wallet"] -= multa_cobrada
+
+                # Verificar si el ladrón tiene Fianza Policial
+                used_bail = False
+                if robber_inv.get("bail_bond", 0) > 0:
+                    robber_inv["bail_bond"] -= 1
+                    robber["prison_until"] = 0.0
+                    used_bail = True
+
+                await self.db.save()
+
+                quote = random.choice(IVY_ROB_FAIL_QUOTES).format(
+                    dice=dado,
+                    thresh=effective_threshold,
+                    victim=victim.mention,
+                    duration=PRISON_DURATION // 60,
+                    fine=multa_cobrada,
+                    currency=CURRENCY_SYMBOL
+                )
+
+                if used_bail:
+                    quote += "\n\n🚔 **¡Fianza Policial activada!** Tu abogado tramitó tu liberación express y no pasas ni un segundo tras las rejas."
+
+                embed = discord.Embed(
+                    title="🚔 ¡CANAZO DIRECTO! ¡LA POLICÍA TE ATRAPÓ!",
+                    description=quote,
+                    color=discord.Color.dark_red()
+                )
+                embed.set_footer(text="You tried to steal under a gargoyle's watch? Really?!")
+            else:
+                # --- ROBO EXITOSO ---
+                rob_prc = random.randint(1, 50)
+                botin = int((victim_data["wallet"] * rob_prc) / 100)
+
+                victim_data["wallet"] -= botin
+                robber["wallet"] += botin
+                robber["stats"]["successful_robs"] = robber["stats"].get("successful_robs", 0) + 1
+                await self.db.save()
+
+                quote = random.choice(IVY_ROB_SUCCESS_QUOTES).format(
+                    dice=dado,
+                    thresh=effective_threshold,
+                    loot=botin,
+                    currency=CURRENCY_SYMBOL,
+                    victim=victim.mention
+                )
+
+                lockpick_note = ""
+                if used_lockpick:
+                    lockpick_note = f"\n🧤 *(Usaste un Guante de Cerrajero: umbral de fallo reducido a {LOCKPICK_FAIL_THRESHOLD})*"
+
+                embed = discord.Embed(
+                    title="🥷 ¡GOLPE CALLEJERO CONSUMADO!",
+                    description=f"{quote}{lockpick_note}\n\n"
+                                f"💵 **Bolsillo de {author.mention}:** {robber['wallet']:,} {CURRENCY_SYMBOL}\n"
+                                f"🥀 **Bolsillo de {victim.mention}:** {victim_data['wallet']:,} {CURRENCY_SYMBOL}",
+                    color=discord.Color.green()
+                )
+                embed.set_footer(text=f"💡 Consejo para la víctima: ¡Resguárdate en la cornisa con '{channel and channel.name or '%'}deposit'!")
+
+        await self._send_response(source, embed)
+
+        if guild:
+            leader_id, leader_wealth = self._top_leader_cache.get(guild.id, (0, 0))
+            robber_total = robber["wallet"] + robber["bank"]
+            if user_id == leader_id or victim_id == leader_id or robber_total >= leader_wealth:
+                await self.actualizar_rol_millonario(guild, announce_channel=channel)
 
     async def _blackjack_impl(self, interaction: discord.Interaction, monto: str):
         """Implementación compartida para /blackjack y %blackjack."""
