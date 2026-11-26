@@ -4,23 +4,23 @@ Gestiona la acumulacion del pozo (jackpot), compra de boletos con limite anti-mo
 calculo ponderado de probabilidades y sorteo automatico con anuncios de Ivy.
 """
 
+import logging
 import random
 import time
-from typing import Dict, Any, Optional, List, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
 import discord
 
 from .config import (
     CURRENCY_NAME,
     CURRENCY_SYMBOL,
-    LOTTERY_TICKET_PRICE,
-    LOTTERY_MAX_TICKETS_PER_USER,
     LOTTERY_BASE_JACKPOT,
     LOTTERY_DRAW_TIME,
-    LOTTERY_DRAW_DAY,
+    LOTTERY_MAX_TICKETS_PER_USER,
+    LOTTERY_TICKET_PRICE,
 )
 from .lore import (
     IVY_LOTTERY_BUY_QUOTES,
-    IVY_LOTTERY_WIN_QUOTES,
 )
 
 if TYPE_CHECKING:
@@ -32,8 +32,9 @@ class LotteryManager:
 
     def __init__(self, cog: "Economy"):
         self.cog = cog
+        self._log = logging.getLogger("economy.lottery")
 
-    async def get_lottery_data(self) -> Dict[str, Any]:
+    async def get_lottery_data(self) -> dict[str, Any]:
         return await self.cog.db.get_lottery_data()
 
     async def add_to_jackpot(self, amount: int) -> int:
@@ -53,9 +54,10 @@ class LotteryManager:
                 )
                 await db.commit()
             
+            self._log.info("Pozo de lotería incrementado", extra={"amount": amount, "new_jackpot": new_jackpot})
             return new_jackpot
 
-    async def buy_tickets(self, user_id: int, count: int) -> Tuple[bool, str, int, int]:
+    async def buy_tickets(self, user_id: int, count: int) -> tuple[bool, str, int, int]:
         """
         Compra boletos de lotería para el usuario asegurando el límite anti-monopolio.
         Retorna: (exito, mensaje, total_tickets_usuario, pozo_actual)
@@ -134,6 +136,8 @@ class LotteryManager:
                 
                 await db.commit()
 
+            self._log.info("Boletos de lotería comprados", extra={"user_id": user_id, "count": count, "total_cost": total_cost, "new_ticket_count": new_ticket_count, "new_jackpot": new_jackpot})
+
             return (
                 True,
                 random.choice(IVY_LOTTERY_BUY_QUOTES).format(
@@ -145,7 +149,7 @@ class LotteryManager:
                 new_jackpot,
             )
 
-    async def draw_lottery(self, guild: Optional[discord.Guild]) -> Tuple[bool, Optional[discord.Member], int, int]:
+    async def draw_lottery(self, guild: discord.Guild | None) -> tuple[bool, discord.Member | None, int, int]:
         """
         Realiza el sorteo del pozo ponderado entre los boletos emitidos.
         Retorna: (hubo_ganador, member_ganador, premio_otorgado, total_boletos_participantes)
@@ -162,7 +166,7 @@ class LotteryManager:
                 
                 # Obtener tickets
                 tickets_dict = {}
-                bolillero: List[int] = []
+                bolillero: list[int] = []
                 async with db.execute(
                     "SELECT user_id, ticket_count FROM lottery_tickets WHERE draw_id = 1 AND ticket_count > 0"
                 ) as cursor:
@@ -173,11 +177,14 @@ class LotteryManager:
                         bolillero.extend([uid] * qty)
                 
                 if not bolillero:
+                    self._log.info("Sorteo de lotería sin participantes")
                     return False, None, jackpot, 0
                 
                 total_tickets = len(bolillero)
                 winner_id = random.choice(bolillero)
                 now = time.time()
+                
+                self._log.info("Sorteo de lotería realizado", extra={"winner_id": winner_id, "jackpot": jackpot, "total_tickets": total_tickets, "participants": len(tickets_dict)})
                 
                 # Sumar premio al ganador
                 await db.execute(
@@ -221,7 +228,7 @@ class LotteryManager:
     def build_embed(
         self,
         user_id: int,
-        guild: Optional[discord.Guild],
+        guild: discord.Guild | None,
     ) -> discord.Embed:
         """Crea el panel visual del Pozo Comunitario (versión síncrona para compatibilidad)."""
         # Nota: Este método se llama desde comandos que ya están en contexto async
@@ -232,7 +239,7 @@ class LotteryManager:
     async def build_embed_async(
         self,
         user_id: int,
-        guild: Optional[discord.Guild],
+        guild: discord.Guild | None,
     ) -> discord.Embed:
         """Crea el panel visual del Pozo Comunitario (versión async)."""
         lottery = await self.get_lottery_data()

@@ -4,22 +4,20 @@ Permite adquirir artefactos y consumibles tematicos de Spanish Harlem (Deadlock)
 """
 
 import time
-from typing import Dict, Any, Optional, List, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
 import discord
 
 from .config import (
-    CURRENCY_NAME,
     CURRENCY_SYMBOL,
-    ITEM_PRICE_COFFEE,
     ITEM_PRICE_BAIL_BOND,
+    ITEM_PRICE_COFFEE,
     ITEM_PRICE_KUDZU_SEEDS,
     ITEM_PRICE_LOCKPICK,
-    ITEM_PRICE_STONE_CHARM,
     ITEM_PRICE_MEGAPHONE,
     ITEM_PRICE_PARADOX_CHRONO,
-    COFFEE_DURATION_SECONDS,
+    ITEM_PRICE_STONE_CHARM,
     PARADOX_COOLDOWN_SECONDS,
-    KUDZU_DURATION_SECONDS,
 )
 
 if TYPE_CHECKING:
@@ -51,7 +49,7 @@ class ShopItem:
 
 
 # Catalogo Oficial de la Tienda de Spanish Harlem
-CATALOG: Dict[str, ShopItem] = {
+CATALOG: dict[str, ShopItem] = {
     "carlos_coffee": ShopItem(
         item_id="carlos_coffee",
         name="Café del Diner de Carlos",
@@ -125,7 +123,7 @@ CATALOG: Dict[str, ShopItem] = {
 }
 
 # Alias para facilitar compras y busquedas
-ITEM_ALIASES: Dict[str, str] = {
+ITEM_ALIASES: dict[str, str] = {
     "cafe": "carlos_coffee",
     "coffee": "carlos_coffee",
     "carlos_coffee": "carlos_coffee",
@@ -165,14 +163,14 @@ ITEM_ALIASES: Dict[str, str] = {
 from collections.abc import Mapping
 
 
-def get_item(query: str) -> Optional[ShopItem]:
+def get_item(query: str) -> ShopItem | None:
     """Obtiene un articulo del catalogo a partir de su ID o alias."""
     clean = query.strip().lower()
     item_id = ITEM_ALIASES.get(clean, clean)
     return CATALOG.get(item_id)
 
 
-def get_user_inventory(user_data: Dict[str, Any]) -> Dict[str, int]:
+def get_user_inventory(user_data: dict[str, Any]) -> dict[str, int]:
     """Retorna el inventario del usuario asegurando un diccionario limpio."""
     inv = user_data.setdefault("inventory", {})
     if not isinstance(inv, Mapping):
@@ -181,7 +179,7 @@ def get_user_inventory(user_data: Dict[str, Any]) -> Dict[str, int]:
     return inv
 
 
-def get_user_buffs(user_data: Dict[str, Any]) -> Dict[str, float]:
+def get_user_buffs(user_data: dict[str, Any]) -> dict[str, float]:
     """Retorna los efectos temporales activos del usuario."""
     buffs = user_data.setdefault("buffs", {})
     if not isinstance(buffs, Mapping):
@@ -283,7 +281,7 @@ class ShopView(discord.ui.View):
             return False
         return True
 
-    def build_embed(self, user_data: Dict[str, Any]) -> discord.Embed:
+    def build_embed(self, user_data: dict[str, Any]) -> discord.Embed:
         wallet = user_data.get("wallet", 0)
         inv = get_user_inventory(user_data)
 
@@ -327,7 +325,7 @@ class InventoryView(discord.ui.View):
         self.cog = cog
         self.user = user
 
-    def build_embed(self, user_data: Dict[str, Any]) -> discord.Embed:
+    def build_embed(self, user_data: dict[str, Any]) -> discord.Embed:
         inv = get_user_inventory(user_data)
         buffs = get_user_buffs(user_data)
         now = time.time()

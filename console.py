@@ -4,12 +4,12 @@ Ejecuta comandos CLI en un hilo secundario daemon conectado de forma asincrona
 al bucle de eventos principal (asyncio) sin bloquear el Gateway de Discord.
 """
 
-import sys
-import time
-import shlex
 import asyncio
+import shlex
+import sys
 import threading
-from typing import Optional, List
+import time
+
 import discord
 from discord.ext import commands
 
@@ -20,9 +20,9 @@ class ConsoleManager:
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.is_running = False
-        self._queue: Optional[asyncio.Queue] = None
-        self._thread: Optional[threading.Thread] = None
-        self._task: Optional[asyncio.Task] = None
+        self._queue: asyncio.Queue | None = None
+        self._thread: threading.Thread | None = None
+        self._task: asyncio.Task | None = None
 
     def start(self) -> None:
         """Inicia el hilo lector de terminal y la tarea asincrona de procesamiento."""
@@ -127,7 +127,7 @@ class ConsoleManager:
     #                       IMPLEMENTACION DE COMANDOS CLI
     # --------------------------------------------------------------------------
 
-    async def _cmd_help(self, args: List[str]) -> None:
+    async def _cmd_help(self, args: list[str]) -> None:
         print("""
 ========================================================================
                  IVY DISCORD BOT - CONSOLA DE COMANDOS
@@ -148,7 +148,7 @@ class ConsoleManager:
 ========================================================================
 """)
 
-    async def _cmd_hablar(self, args: List[str]) -> None:
+    async def _cmd_hablar(self, args: list[str]) -> None:
         """Envia un mensaje al canal especificado por ID o por nombre."""
         if len(args) < 2:
             print("[CONSOLA] Uso: hablar <id_canal_o_nombre> <mensaje>")
@@ -187,7 +187,7 @@ class ConsoleManager:
         except Exception as e:
             print(f"[CONSOLA] Error al enviar mensaje: {e}")
 
-    async def _cmd_addmoney(self, args: List[str]) -> None:
+    async def _cmd_addmoney(self, args: list[str]) -> None:
         """Suma o resta almas a la billetera o banco de un usuario."""
         if len(args) < 2:
             print("[CONSOLA] Uso: add <user_id> <cantidad> [w|b] (ejemplo: add 123456789 500 w)")
@@ -224,7 +224,7 @@ class ConsoleManager:
         sign = "+" if amount >= 0 else ""
         print(f"[CONSOLA] Balance actualizado para {user_id}: {sign}{amount:,} en {target_type}. Saldo actual: {new_val:,}")
 
-    async def _cmd_setmoney(self, args: List[str]) -> None:
+    async def _cmd_setmoney(self, args: list[str]) -> None:
         """Fija la cantidad exacta en mano y/o banco para un usuario."""
         if len(args) < 2:
             print("[CONSOLA] Uso: set <user_id> <wallet> [bank] (ejemplo: set 123456789 1000 5000)")
@@ -256,7 +256,7 @@ class ConsoleManager:
 
         print(f"[CONSOLA] Valores fijados para {user_id}: Wallet: {user_proxy['wallet']:,} | Bank: {user_proxy['bank']:,}")
 
-    async def _cmd_balance(self, args: List[str]) -> None:
+    async def _cmd_balance(self, args: list[str]) -> None:
         """Muestra el saldo y situacion penal de un usuario."""
         if len(args) < 1:
             print("[CONSOLA] Uso: bal <user_id>")
@@ -292,7 +292,7 @@ class ConsoleManager:
 - Estado penal     : {'EN PRISION (' + economy_cog._format_time(rem) + ')' if in_prison else 'Libre'}
 --------------------------------------------------""")
 
-    async def _cmd_unjail(self, args: List[str]) -> None:
+    async def _cmd_unjail(self, args: list[str]) -> None:
         """Libera a un usuario encarcelado."""
         if len(args) < 1:
             print("[CONSOLA] Uso: unjail <user_id>")
@@ -316,7 +316,7 @@ class ConsoleManager:
 
         print(f"[CONSOLA] Usuario {user_id} liberado de prision exitosamente.")
 
-    async def _cmd_jail(self, args: List[str]) -> None:
+    async def _cmd_jail(self, args: list[str]) -> None:
         """Envia a prision a un usuario por una cantidad determinada de minutos."""
         if len(args) < 1:
             print("[CONSOLA] Uso: jail <user_id> [minutos]")
@@ -341,7 +341,7 @@ class ConsoleManager:
 
         print(f"[CONSOLA] Usuario {user_id} encarcelado por {minutos} minutos.")
 
-    async def _cmd_event(self, args: List[str]) -> None:
+    async def _cmd_event(self, args: list[str]) -> None:
         """Dispara un evento aleatorio o especifico en el canal oficial de economia."""
         economy_cog = self.bot.get_cog("Economy")
         if not economy_cog:
@@ -387,9 +387,14 @@ class ConsoleManager:
         else:
             print(f"[CONSOLA] Disparando un evento aleatorio en #{channel.name}...")
             import random
+
             from economy.config import (
-                EVENT_WEIGHT_DROP, EVENT_WEIGHT_TRIVIA, EVENT_WEIGHT_RAID,
-                EVENT_WEIGHT_ROULETTE, EVENT_WEIGHT_BOOST, EVENT_WEIGHT_ROBIN_HOOD
+                EVENT_WEIGHT_BOOST,
+                EVENT_WEIGHT_DROP,
+                EVENT_WEIGHT_RAID,
+                EVENT_WEIGHT_ROBIN_HOOD,
+                EVENT_WEIGHT_ROULETTE,
+                EVENT_WEIGHT_TRIVIA,
             )
             eventos_test = [
                 economy_cog._trigger_soul_drop,
@@ -406,7 +411,7 @@ class ConsoleManager:
             handler = random.choices(eventos_test, weights=pesos_test, k=1)[0]
             await handler(channel)
 
-    async def _cmd_lottery(self, args: List[str]) -> None:
+    async def _cmd_lottery(self, args: list[str]) -> None:
         """Gestiona la loteria y el pozo del barrio desde la terminal."""
         economy_cog = self.bot.get_cog("Economy")
         if not economy_cog or not hasattr(economy_cog, "lottery"):
@@ -438,7 +443,7 @@ class ConsoleManager:
                 print(f"- Ultimo Ganador: Usuario {last_winner['user_id']} ({last_winner['amount']:,} almas)")
             print()
 
-    async def _cmd_migrate(self, args: List[str]) -> None:
+    async def _cmd_migrate(self, args: list[str]) -> None:
         """Migra datos desde JSON legacy a la base de datos SQLite."""
         economy_cog = self.bot.get_cog("Economy")
         if not economy_cog:
@@ -461,7 +466,7 @@ class ConsoleManager:
         except Exception as e:
             print(f"[CONSOLA] Error durante la migracion: {e}")
 
-    async def _cmd_servers(self, args: List[str]) -> None:
+    async def _cmd_servers(self, args: list[str]) -> None:
         """Lista los servidores en los que participa el bot."""
         if not self.bot.guilds:
             print("[CONSOLA] El bot no esta conectado a ningun servidor.")
@@ -473,7 +478,7 @@ class ConsoleManager:
             print(f"- {g.name} | ID: {g.id} | Miembros: {g.member_count} | {owner_str}")
         print()
 
-    async def _cmd_channels(self, args: List[str]) -> None:
+    async def _cmd_channels(self, args: list[str]) -> None:
         """Lista los canales de texto de un servidor o de todos los servidores."""
         guild_id = int(args[0]) if args and args[0].isdigit() else None
         guilds = [self.bot.get_guild(guild_id)] if guild_id else self.bot.guilds
@@ -486,7 +491,7 @@ class ConsoleManager:
                 print(f"  #{c.name} -> ID: {c.id}")
         print()
 
-    async def _cmd_exit(self, args: List[str]) -> None:
+    async def _cmd_exit(self, args: list[str]) -> None:
         """Apaga el bot de forma segura y controlada."""
         print("[CONSOLA] Apagando el bot de forma controlada...")
         self.stop()

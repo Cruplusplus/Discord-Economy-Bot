@@ -3,14 +3,14 @@ Esquema de base de datos SQLite para Discord Economy Bot.
 Define tablas, índices y migraciones versionadas.
 """
 
+
 import aiosqlite
-from typing import List, Tuple
 
 # Version actual del esquema (incrementar en cada migración)
 SCHEMA_VERSION = 2
 
 # Definición de tablas: (nombre_tabla, sql_create)
-TABLES: List[Tuple[str, str]] = [
+TABLES: list[tuple[str, str]] = [
     (
         "schema_version",
         """
@@ -137,7 +137,7 @@ TABLES: List[Tuple[str, str]] = [
 ]
 
 # Índices para consultas frecuentes
-INDEXES: List[str] = [
+INDEXES: list[str] = [
     "CREATE INDEX IF NOT EXISTS idx_users_wallet_bank ON users(wallet + bank DESC)",
     "CREATE INDEX IF NOT EXISTS idx_transactions_user_created ON transactions(user_id, created_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_transactions_type_created ON transactions(tx_type, created_at DESC)",
@@ -147,7 +147,7 @@ INDEXES: List[str] = [
 ]
 
 # Trigger para actualizar updated_at en users
-TRIGGERS: List[str] = [
+TRIGGERS: list[str] = [
     """
     CREATE TRIGGER IF NOT EXISTS update_users_timestamp
     AFTER UPDATE ON users
@@ -229,7 +229,6 @@ async def run_migrations(db_path: str) -> None:
 
 async def _migration_v1_initial(db_path: str) -> None:
     """Migración inicial: ya cubierta por init_database()."""
-    pass
 
 
 async def _migration_v2_add_last_loss(db_path: str) -> None:

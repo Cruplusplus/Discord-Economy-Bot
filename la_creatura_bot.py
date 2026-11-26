@@ -1,13 +1,18 @@
-import os
-import re
 import asyncio
-import aiohttp
+import os
 import random
 import signal
+
+import aiohttp
 from dotenv import load_dotenv
 
 # Cargar variables de entorno desde el archivo .env
 load_dotenv()
+
+# Configurar logging estructurado ANTES de importar modulos que lo usen
+from economy.logging_config import setup_logging
+
+setup_logging()
 
 import discord
 from discord.ext import commands
@@ -30,6 +35,7 @@ bot = commands.Bot(command_prefix=prefijo, intents=intents)
 
 # Administrador de consola interactiva CLI
 from console import ConsoleManager
+
 console_manager = ConsoleManager(bot)
 
 # CONST
@@ -41,15 +47,15 @@ self_discord_id = parse_int_env("OWNER_DISCORD_ID", 0)
 
 # Constantes multimedia y listas de recursos estáticos
 from constants import (
-    LISTA_GIFS,
     HOP_ON_DEADLOCK_LIST,
     LEPOARD_PAW_LIST,
+    LISTA_GIFS,
     ivy_tags,
 )
 
 #code
 
-deadlock_counter = int(0)
+deadlock_counter = 0
 shutdown_started = False
 
 

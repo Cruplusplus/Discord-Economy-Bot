@@ -6,22 +6,24 @@ Vistas interactivas de interfaz grafica (discord.ui.View) para eventos aleatorio
 - RobinHoodView: Impuesto a la opulencia y redistribucion comunitaria.
 """
 
+import logging
 import random
 import time
-from typing import Optional, List, Set, TYPE_CHECKING
+from typing import TYPE_CHECKING
+
 import discord
 
 from .config import (
-    DROP_TIMEOUT_SECONDS,
     CURRENCY_NAME,
     CURRENCY_SYMBOL,
+    DROP_TIMEOUT_SECONDS,
+    KUDZU_DROP_BONUS_PERCENT,
     RAID_HP,
     RAID_TIMEOUT_SECONDS,
     RAID_TOTAL_POOL,
+    ROULETTE_PRISON_DURATION,
     ROULETTE_RISK_WIN_CHANCE,
     ROULETTE_WIN_AMOUNT,
-    ROULETTE_PRISON_DURATION,
-    KUDZU_DROP_BONUS_PERCENT,
 )
 
 if TYPE_CHECKING:
@@ -36,7 +38,8 @@ class SoulDropView(discord.ui.View):
         self.cog = cog
         self.amount = amount
         self.claimed = False
-        self.message: Optional[discord.Message] = None
+        self.message: discord.Message | None = None
+        self._log = logging.getLogger("economy.views.souldrop")
 
     @discord.ui.button(label="💎 ¡Reclamar Alijo!", style=discord.ButtonStyle.success, emoji="🪙")
     async def claim_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -63,6 +66,13 @@ class SoulDropView(discord.ui.View):
             user_data["wallet"] += total_reward
             await self.cog.db.save()
 
+        self._log.info("Alijo de almas reclamado", extra={
+            "user_id": interaction.user.id,
+            "base_amount": self.amount,
+            "kudzu_bonus": kudzu_bonus,
+            "total_reward": total_reward,
+        })
+
         desc = (
             f"¡Rápido como una gárgola en picada! **{interaction.user.mention}** se abalanzó sobre el alijo "
             f"y se embolsó **+{self.amount:,} {CURRENCY_NAME} {CURRENCY_SYMBOL}**.\n"
@@ -85,6 +95,7 @@ class SoulDropView(discord.ui.View):
 
     async def on_timeout(self):
         if not self.claimed:
+            self._log.info("Alijo de almas desvanecido (timeout)", extra={"base_amount": self.amount})
             for item in self.children:
                 item.disabled = True
             if self.message:
@@ -108,10 +119,11 @@ class RaidBossView(discord.ui.View):
         self.cog = cog
         self.max_hp = RAID_HP
         self.current_hp = RAID_HP
-        self.attackers: List[discord.Member] = []
-        self.attacker_ids: Set[int] = set()
+        self.attackers: list[discord.Member] = []
+        self.attacker_ids: set[int] = set()
         self.defeated = False
-        self.message: Optional[discord.Message] = None
+        self.message: discord.Message | None = None
+        self._log = logging.getLogger("economy.views.raidboss")
 
     def _generate_hp_bar(self) -> str:
         filled = "🟩" * self.current_hp
@@ -151,6 +163,12 @@ class RaidBossView(discord.ui.View):
                 await self.cog.db.save()
 
         if self.defeated:
+            self._log.info("Raid completado - Patrulla derrotada", extra={
+                "final_attacker_id": interaction.user.id,
+                "participants": len(self.attackers),
+                "payout_per_participant": payout,
+                "total_pool": RAID_TOTAL_POOL,
+            })
             heroes_str = "\n".join(f"• {u.mention}: **+{payout:,} {CURRENCY_SYMBOL}**" for u in self.attackers)
             embed = discord.Embed(
                 title="🏆 ¡PATRULLA DERROTADA! ¡EL BARRIO SE RESPETA!",
@@ -167,6 +185,11 @@ class RaidBossView(discord.ui.View):
             if interaction.guild:
                 await self.cog.actualizar_rol_millonario(interaction.guild, announce_channel=interaction.channel)
         else:
+            self._log.debug("Raid - Golpe registrado", extra={
+                "attacker_id": interaction.user.id,
+                "participants": len(self.attackers),
+                "remaining_hp": self.current_hp,
+            })
             embed = discord.Embed(
                 title="🚨 ¡EMBOSCADA DEL SINDICATO MENDOZA!",
                 description=(
@@ -184,14 +207,15 @@ class RaidBossView(discord.ui.View):
 
     async def on_timeout(self):
         if not self.defeated:
+            self._log.info("Raid fallido - Patrulla escapó (timeout)", extra={"participants": len(self.attackers), "remaining_hp": self.current_hp})
             for item in self.children:
                 item.disabled = True
             if self.message:
                 embed = discord.Embed(
                     title="💨 La Patrulla Mendoza Escapó",
                     description=(
-                        f"Los matones se rieron en sus caras y se perdieron en las sombras con el botín. "
-                        f"Les faltó coordinación barrial para bajarlos a tiempo."
+                        "Los matones se rieron en sus caras y se perdieron en las sombras con el botín. "
+                        "Les faltó coordinación barrial para bajarlos a tiempo."
                     ),
                     color=discord.Color.dark_grey()
                 )
@@ -209,7 +233,8 @@ class RiskRouletteView(discord.ui.View):
         super().__init__(timeout=DROP_TIMEOUT_SECONDS)
         self.cog = cog
         self.claimed = False
-        self.message: Optional[discord.Message] = None
+        self.message: discord.Message | None = None
+        self._log = logging.getLogger("economy.views.riskroulette")
 
     @discord.ui.button(label="🎲 ¡Aceptar el Desafío!", style=discord.ButtonStyle.primary, emoji="🔥")
     async def risk_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -233,6 +258,12 @@ class RiskRouletteView(discord.ui.View):
                 user_data["wallet"] += ROULETTE_WIN_AMOUNT
                 await self.cog.db.save()
 
+                self._log.info("Risk Roulette - Victoria", extra={
+                    "user_id": interaction.user.id,
+                    "prize": ROULETTE_WIN_AMOUNT,
+                    "new_wallet": user_data["wallet"],
+                })
+
                 embed = discord.Embed(
                     title="💎 ¡QUÉ AGALLAS! ¡VICTORIA TOTAL!",
                     description=(
@@ -247,6 +278,11 @@ class RiskRouletteView(discord.ui.View):
             else:
                 user_data["prison_until"] = max(user_data.get("prison_until", 0.0), now + ROULETTE_PRISON_DURATION)
                 await self.cog.db.save()
+
+                self._log.info("Risk Roulette - Derrota (cárcel)", extra={
+                    "user_id": interaction.user.id,
+                    "prison_duration": ROULETTE_PRISON_DURATION,
+                })
 
                 minutos = ROULETTE_PRISON_DURATION // 60
                 embed = discord.Embed(
@@ -267,6 +303,7 @@ class RiskRouletteView(discord.ui.View):
 
     async def on_timeout(self):
         if not self.claimed:
+            self._log.info("Risk Roulette - Timeout (nadie aceptó el desafío)")
             for item in self.children:
                 item.disabled = True
             if self.message:
@@ -291,7 +328,8 @@ class RobinHoodView(discord.ui.View):
         self.target_member = target_member
         self.amount = amount
         self.claimed = False
-        self.message: Optional[discord.Message] = None
+        self.message: discord.Message | None = None
+        self._log = logging.getLogger("economy.views.robinhood")
 
     @discord.ui.button(label="💰 ¡Agarrar Bolsa Redistribuida!", style=discord.ButtonStyle.success, emoji="🏹")
     async def claim_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -318,6 +356,13 @@ class RobinHoodView(discord.ui.View):
             user_data["wallet"] += self.amount
             await self.cog.db.save()
 
+        self._log.info("Robin Hood - Bolsa redistribuida reclamada", extra={
+            "claimer_id": interaction.user.id,
+            "target_id": self.target_member.id,
+            "amount": self.amount,
+            "new_wallet": user_data["wallet"],
+        })
+
         embed = discord.Embed(
             title="🏹 ¡JUSTICIA CALLEJERA AL ESTILO IVY!",
             description=(
@@ -336,6 +381,10 @@ class RobinHoodView(discord.ui.View):
 
     async def on_timeout(self):
         if not self.claimed:
+            self._log.info("Robin Hood - Bolsa redistribuida no reclamada (timeout)", extra={
+                "target_id": self.target_member.id,
+                "amount": self.amount,
+            })
             for item in self.children:
                 item.disabled = True
             if self.message:

@@ -4,98 +4,95 @@ Personificado con la voz, lore y personalidad de Ivy (Deadlock).
 Hereda de EconomyEventsMixin y EconomyDuelsMixin para conformar el sistema completo.
 """
 
-import time
+import logging
 import random
+import time
+from typing import Any
+
 import aiohttp
-from typing import Optional, Tuple, Dict, Any
 import discord
+from discord import app_commands
 from discord.ext import commands
 
+from .blackjack import (
+    BlackjackView,
+    Deck,
+    calculate_hand,
+    format_hand,
+    is_natural_blackjack,
+)
 from .config import (
-    DATA_FILE_PATH,
+    BLACKJACK_PAYOUT_NATURAL,
+    BOOST_MULTIPLIER,
+    COFFEE_DURATION_SECONDS,
+    COFFEE_WORK_COOLDOWN,
+    COIN_FACES,
+    COIN_MULTIPLIER,
     CURRENCY_NAME,
     CURRENCY_SYMBOL,
-    WORK_COOLDOWN,
-    WORK_MIN_REWARD,
-    WORK_MAX_REWARD,
-    BOOST_MULTIPLIER,
-    COIN_MULTIPLIER,
-    COIN_FACES,
-    RULETA_WEIGHT_ROJO,
-    RULETA_WEIGHT_NEGRO,
-    RULETA_WEIGHT_VERDE,
-    RULETA_PAYOUT_ROJO,
-    RULETA_PAYOUT_NEGRO,
-    RULETA_PAYOUT_VERDE,
-    RULETA_COLOR_MAP,
-    ROB_COOLDOWN,
-    ROB_VICTIM_MIN_WALLET,
-    ROB_DICE_MIN,
-    ROB_DICE_MAX,
-    ROB_FAIL_THRESHOLD,
-    ROB_FAIL_FINE,
+    DATA_FILE_PATH,
+    GIPHY_API_KEY,
+    INACTIVITY_STAGE_1_HOURS,
+    KUDZU_DURATION_SECONDS,
+    LOCKPICK_FAIL_THRESHOLD,
+    LOTTERY_BASE_JACKPOT,
+    LOTTERY_MAX_TICKETS_PER_USER,
+    LOTTERY_TICKET_PRICE,
+    MIN_RISK_BET_FLOOR,
+    MIN_RISK_BET_PERCENT,
+    PARADOX_COOLDOWN_SECONDS,
+    PARADOX_REWIND_WINDOW_SECONDS,
     PRISON_DURATION,
     RICHEST_ROLE_ID,
     RICHEST_ROLE_NAME,
-    RICHEST_ANNOUNCE_CHANNEL_ID,
-    GIPHY_API_KEY,
-    MIN_RISK_BET_PERCENT,
-    MIN_RISK_BET_FLOOR,
+    ROB_COOLDOWN,
+    ROB_DICE_MAX,
+    ROB_DICE_MIN,
+    ROB_FAIL_FINE,
+    ROB_FAIL_THRESHOLD,
+    ROB_VICTIM_MIN_WALLET,
     ROBIN_HOOD_MIN_WALLET,
-    INACTIVITY_STAGE_1_HOURS,
-    BLACKJACK_PAYOUT_NORMAL,
-    BLACKJACK_PAYOUT_NATURAL,
-    COFFEE_WORK_COOLDOWN,
-    COFFEE_DURATION_SECONDS,
-    KUDZU_DURATION_SECONDS,
-    LOCKPICK_FAIL_THRESHOLD,
-    LOTTERY_TICKET_PRICE,
-    LOTTERY_MAX_TICKETS_PER_USER,
-    LOTTERY_BASE_JACKPOT,
-    ITEM_PRICE_PARADOX_CHRONO,
-    PARADOX_REWIND_WINDOW_SECONDS,
-    PARADOX_COOLDOWN_SECONDS,
-)
-from .lore import (
-    IVY_WORK_ACTIVITIES,
-    IVY_WORK_COOLDOWN_QUOTES,
-    IVY_PRISON_WARNING_QUOTES,
-    IVY_COIN_WIN_QUOTES,
-    IVY_COIN_LOSS_QUOTES,
-    IVY_RULETA_WIN_NORMAL_QUOTES,
-    IVY_RULETA_WIN_VERDE_QUOTES,
-    IVY_RULETA_LOSS_QUOTES,
-    IVY_ROB_FAIL_QUOTES,
-    IVY_ROB_SUCCESS_QUOTES,
-    IVY_BLACKJACK_NATURAL_QUOTES,
-    IVY_BLACKJACK_PUSH_QUOTES,
-    IVY_BLACKJACK_LOSS_QUOTES,
-    IVY_SHOP_BUY_QUOTES,
-    IVY_SHOP_USE_QUOTES,
-    IVY_LOTTERY_BUY_QUOTES,
-    IVY_PARADOX_REWIND_QUOTES,
+    RULETA_COLOR_MAP,
+    RULETA_PAYOUT_NEGRO,
+    RULETA_PAYOUT_ROJO,
+    RULETA_PAYOUT_VERDE,
+    RULETA_WEIGHT_NEGRO,
+    RULETA_WEIGHT_ROJO,
+    RULETA_WEIGHT_VERDE,
+    WORK_COOLDOWN,
+    WORK_MAX_REWARD,
+    WORK_MIN_REWARD,
 )
 from .database import DataManager
-from .events import EconomyEventsMixin
 from .duels import EconomyDuelsMixin
-from .blackjack import (
-    Deck,
-    Card,
-    calculate_hand,
-    is_natural_blackjack,
-    format_hand,
-    BlackjackView,
+from .events import EconomyEventsMixin
+from .lore import (
+    IVY_BLACKJACK_LOSS_QUOTES,
+    IVY_BLACKJACK_NATURAL_QUOTES,
+    IVY_BLACKJACK_PUSH_QUOTES,
+    IVY_COIN_LOSS_QUOTES,
+    IVY_COIN_WIN_QUOTES,
+    IVY_PARADOX_REWIND_QUOTES,
+    IVY_PRISON_WARNING_QUOTES,
+    IVY_ROB_FAIL_QUOTES,
+    IVY_ROB_SUCCESS_QUOTES,
+    IVY_RULETA_LOSS_QUOTES,
+    IVY_RULETA_WIN_NORMAL_QUOTES,
+    IVY_RULETA_WIN_VERDE_QUOTES,
+    IVY_SHOP_BUY_QUOTES,
+    IVY_WORK_ACTIVITIES,
+    IVY_WORK_COOLDOWN_QUOTES,
 )
+from .lottery import LotteryManager
 from .shop import (
     CATALOG,
-    get_item,
-    get_user_inventory,
-    get_user_buffs,
-    ShopView,
     InventoryView,
+    ShopView,
+    get_item,
+    get_user_buffs,
+    get_user_inventory,
 )
 from .views import RewindView
-from .lottery import LotteryManager
 
 
 class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
@@ -105,26 +102,27 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         super().__init__()
         self.bot = bot
         self.db = DataManager(DATA_FILE_PATH)
-        self.active_duels: Dict[int, Dict[str, Any]] = {}
+        self.active_duels: dict[int, dict[str, Any]] = {}
         self.pending_challenges: set[int] = set()
         self.work_boost_active: bool = False
         self.work_boost_until: float = 0.0
         self.active_event: bool = False
-        self._top_leader_cache: Dict[int, Tuple[int, int]] = {}
-        self._not_in_guild_cache: Dict[int, set[int]] = {}
+        self._top_leader_cache: dict[int, tuple[int, int]] = {}
+        self._not_in_guild_cache: dict[int, set[int]] = {}
         self.active_blackjacks: set[int] = set()
         self.lottery = LotteryManager(self)
+        self._log = logging.getLogger("economy.cog")
 
     async def cog_load(self):
         """Inicializa la base de datos al cargar el Cog."""
         await self.db.initialize()
-        print("[IVY ECONOMY] Base de datos SQLite inicializada correctamente.")
+        self._log.info("Base de datos SQLite inicializada correctamente")
 
     # --------------------------------------------------------------------------
     #                         METODOS AUXILIARES
     # --------------------------------------------------------------------------
 
-    async def _obtener_gif(self, tags=None) -> Optional[str]:
+    async def _obtener_gif(self, tags=None) -> str | None:
         """Busca un GIF temático en Giphy para los duelos."""
         if isinstance(tags, list):
             q = " ".join(tags)
@@ -153,11 +151,11 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                             elegido = random.choice(resultados)
                             return elegido["images"]["original"]["url"]
         except Exception as e:
-            print(f"[IVY ECONOMY] Error al conectar con Giphy para duelo: {e}")
+            self._log.warning("Error al conectar con Giphy para duelo", extra={"error": str(e), "tags": tags})
 
         return None
 
-    def _is_in_prison(self, user_data: Dict[str, Any]) -> Tuple[bool, int]:
+    def _is_in_prison(self, user_data: dict[str, Any]) -> tuple[bool, int]:
         """Determina si el usuario está preso y cuántos segundos le restan."""
         prison_until = user_data.get("prison_until", 0.0)
         now = time.time()
@@ -175,7 +173,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             return f"{minutes}m {secs}s"
         return f"{secs}s"
 
-    def _parse_amount(self, amount_str: str, current_balance: int) -> Optional[int]:
+    def _parse_amount(self, amount_str: str, current_balance: int) -> int | None:
         """
         Parsea el monto ingresado admitiendo:
         - Enteros positivos (ej: 50, 1000)
@@ -203,7 +201,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
     #              SISTEMA DINAMICO: ROL DEL MAS MILLONARIO (TOP 1)
     # --------------------------------------------------------------------------
 
-    def _get_richest_role(self, guild: discord.Guild) -> Optional[discord.Role]:
+    def _get_richest_role(self, guild: discord.Guild) -> discord.Role | None:
         """Obtiene el rol configurado para el Más Millonario por ID o por Nombre."""
         if guild is None:
             return None
@@ -216,7 +214,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         return None
 
     @staticmethod
-    def _safe_remove_cached_role(member: Optional[discord.Member], role_id: int):
+    def _safe_remove_cached_role(member: discord.Member | None, role_id: int):
         if member is None:
             return
         roles_attr = getattr(member, "_roles", None)
@@ -233,7 +231,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 pass
 
     @staticmethod
-    def _safe_add_cached_role(member: Optional[discord.Member], role_id: int):
+    def _safe_add_cached_role(member: discord.Member | None, role_id: int):
         if member is None:
             return
         roles_attr = getattr(member, "_roles", None)
@@ -250,7 +248,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             except Exception:
                 pass
 
-    async def _get_top_wealthy_member(self, guild: Optional[discord.Guild]) -> Tuple[Optional[discord.Member], int]:
+    async def _get_top_wealthy_member(self, guild: discord.Guild | None) -> tuple[discord.Member | None, int]:
         """Encuentra al miembro no-bot con mayor fortuna total (wallet + bank) dentro del servidor de forma optimizada."""
         if guild is None:
             return None, 0
@@ -301,8 +299,8 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         user_id: int,
         bet_amount: int,
         user_total: int,
-        guild: Optional[discord.Guild]
-    ) -> Tuple[bool, bool, int]:
+        guild: discord.Guild | None
+    ) -> tuple[bool, bool, int]:
         """
         Evalua en memoria (0 llamadas de red) si una apuesta resetea el reloj de inactividad
         del apostador, aplicando la regla de riesgo para el Mas Millonario.
@@ -326,8 +324,8 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         self,
         user_id: int,
         bet_amount: int,
-        guild: Optional[discord.Guild]
-    ) -> Tuple[bool, bool, int]:
+        guild: discord.Guild | None
+    ) -> tuple[bool, bool, int]:
         """
         Registra la actividad de apuesta para el usuario.
         Aprovecha la cache en memoria y solo guarda en disco si hubo cambio.
@@ -366,9 +364,9 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
 
     async def actualizar_rol_millonario(
         self,
-        guild: Optional[discord.Guild],
-        announce_channel: Optional[discord.abc.Messageable] = None
-    ) -> Optional[discord.Member]:
+        guild: discord.Guild | None,
+        announce_channel: discord.abc.Messageable | None = None
+    ) -> discord.Member | None:
         """
         Determina automáticamente quién es el usuario con más patrimonio total (mano + banco)
         en el servidor y le transfiere el rol exclusivo de Millonario/Magnate si hubo un cambio.
@@ -441,7 +439,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         return best_member
 
 
-    async def execute_temporal_rewind(self, user_id: int) -> Tuple[bool, Any]:
+    async def execute_temporal_rewind(self, user_id: int) -> tuple[bool, Any]:
         """Ejecuta el rebobinado de una tirada fallida usando el Cronómetro de Paradox."""
         now = time.time()
         async with self.db.lock:
@@ -571,7 +569,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         await ctx.reply(embed=embed)
 
     @commands.command(name="inventario", aliases=["inv", "mochila", "items"])
-    async def inventario(self, ctx: commands.Context, target: Optional[discord.Member] = None):
+    async def inventario(self, ctx: commands.Context, target: discord.Member | None = None):
         """Muestra la mochila con tus objetos y efectos temporales activos."""
         user = target or ctx.author
         user_data = await self.db.get_user_data(user.id)
@@ -580,7 +578,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         await ctx.reply(embed=embed)
 
     @commands.command(name="usar", aliases=["use"])
-    async def usar(self, ctx: commands.Context, item_query: str, *, args: Optional[str] = None):
+    async def usar(self, ctx: commands.Context, item_query: str, *, args: str | None = None):
         """Activa un consumible de tu inventario (café, semillas, megáfono)."""
         item = get_item(item_query)
         if not item:
@@ -723,7 +721,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         await ctx.reply(embed=embed)
 
     @commands.command(name="ticket", aliases=["tickets", "boletos", "comprarticket"])
-    async def ticket(self, ctx: commands.Context, cantidad: Optional[str] = "1"):
+    async def ticket(self, ctx: commands.Context, cantidad: str | None = "1"):
         """Compra boletos para el sorteo semanal del Gran Pozo Comunitario."""
         qty = 1
         user_proxy = await self.db.get_user_data(ctx.author.id)
@@ -879,6 +877,219 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             user_total = user["wallet"] + user["bank"]
             if user_id == leader_id or user_total >= leader_wealth:
                 await self.actualizar_rol_millonario(ctx.guild, announce_channel=ctx.channel)
+
+    # --------------------------------------------------------------------------
+    #                       SLASH COMMAND IMPLEMENTATIONS
+    # --------------------------------------------------------------------------
+    # These methods bridge slash commands (app_commands) with existing logic.
+    # They extract the same data from Interaction that prefix commands get from Context.
+
+    async def _bal_impl(self, interaction: discord.Interaction, target: discord.User):
+        """Implementación compartida para /bal y %bal."""
+        member = target
+        if interaction.guild:
+            member = interaction.guild.get_member(target.id) or target
+        
+        async with self.db.lock:
+            user = await self.db.get_user_data(target.id)
+            wallet = user["wallet"]
+            bank_bal = user["bank"]
+            total = wallet + bank_bal
+            in_prison, rem = self._is_in_prison(user)
+
+        embed = discord.Embed(
+            title=f"💳 Balance de {member.display_name}",
+            description="Revisando el registro de almas en los archivos de Spanish Harlem.",
+            color=discord.Color.blue()
+        )
+        embed.set_thumbnail(url=member.display_avatar.url)
+        embed.add_field(name="💵 En Mano (Bolsillos)", value=f"**{wallet:,}** {CURRENCY_SYMBOL}", inline=True)
+        embed.add_field(name="🪨 En la Cornisa (Banco)", value=f"**{bank_bal:,}** {CURRENCY_SYMBOL}", inline=True)
+        embed.add_field(name="💰 Patrimonio Neto", value=f"**{total:,}** {CURRENCY_NAME} {CURRENCY_SYMBOL}", inline=False)
+
+        if in_prison:
+            embed.add_field(
+                name="🚨 Estado Penal",
+                value=f"⛓️ **EN EL CALABOZO** (le restan {self._format_time(rem)} de condena)",
+                inline=False
+            )
+        else:
+            embed.add_field(name="🕊️ Estado Legal", value="Ciudadano libre y sin causas pendientes.", inline=False)
+
+        embed.set_footer(text="Helping people's what I do.")
+        await interaction.response.send_message(embed=embed)
+
+    async def _work_impl(self, interaction: discord.Interaction):
+        """Implementación compartida para /work y %work."""
+        user_id = interaction.user.id
+
+        async with self.db.lock:
+            user = await self.db.get_user_data(user_id)
+            now = time.time()
+
+            # 1. Validación de Cárcel
+            in_prison, remaining_prison = self._is_in_prison(user)
+            if in_prison:
+                time_str = self._format_time(remaining_prison)
+                quote = random.choice(IVY_PRISON_WARNING_QUOTES).format(time=time_str)
+                embed = discord.Embed(
+                    title="🚨 ¡Estás en Cana, Chacho!",
+                    description=quote,
+                    color=discord.Color.red()
+                )
+                embed.set_footer(text="Ivy no deja salir a los rateros hasta que cumplan la condena.")
+                await interaction.response.send_message(embed=embed)
+                return
+
+            # 2. Validación de Cooldown
+            buffs = user.setdefault("buffs", {})
+            is_coffee = buffs.get("coffee_until", 0.0) > now
+            effective_work_cd = COFFEE_WORK_COOLDOWN if is_coffee else WORK_COOLDOWN
+
+            last_work = user.get("last_work", 0.0)
+            elapsed = now - last_work
+            if elapsed < effective_work_cd:
+                remaining_cd = int(effective_work_cd - elapsed)
+                time_str = self._format_time(remaining_cd)
+                quote = random.choice(IVY_WORK_COOLDOWN_QUOTES).format(time=time_str)
+                embed = discord.Embed(
+                    title="🪨 Modo Estatua / Stone Form Activo",
+                    description=quote,
+                    color=discord.Color.light_grey()
+                )
+                embed.set_footer(text="Being a statue isn't riveting, but it beats being exhausted!")
+                await interaction.response.send_message(embed=embed)
+                return
+
+            # 3. Asignación de Recompensa
+            base_reward = random.randint(WORK_MIN_REWARD, WORK_MAX_REWARD)
+            is_boosted = self.work_boost_active and (now < self.work_boost_until)
+            reward = int(round(base_reward * BOOST_MULTIPLIER)) if is_boosted else base_reward
+
+            user["wallet"] += reward
+            user["last_work"] = now
+            user["stats"]["times_worked"] = user["stats"].get("times_worked", 0) + 1
+            await self.db.save()
+
+        action = random.choice(IVY_WORK_ACTIVITIES)
+        desc = (
+            f"*{action}*\n\n"
+            f"Recolectaste **+{reward:,} {CURRENCY_NAME} {CURRENCY_SYMBOL}** por el esfuerzo.\n"
+        )
+        if is_boosted:
+            desc += f"⚡ **¡Bonificación de Lluvia de Almas activa! (x{BOOST_MULTIPLIER:.1f})**\n"
+        desc += f"En tus bolsillos ahora tenés: **{user['wallet']:,} {CURRENCY_SYMBOL}**"
+
+        embed = discord.Embed(
+            title="✨ ¡Ronda Completada por Spanish Harlem!",
+            description=desc,
+            color=discord.Color.green()
+        )
+        if is_coffee:
+            footer_text = f"Ivy te espera para la próxima ronda en {COFFEE_WORK_COOLDOWN} segundos. (☕ ¡Café de Carlos activo!)"
+        else:
+            footer_text = f"Ivy te espera para la próxima ronda en {WORK_COOLDOWN // 60} minutos."
+        embed.set_footer(text=footer_text)
+        await interaction.response.send_message(embed=embed)
+
+        if interaction.guild:
+            leader_id, leader_wealth = self._top_leader_cache.get(interaction.guild.id, (0, 0))
+            user_total = user["wallet"] + user["bank"]
+            if user_id == leader_id or user_total >= leader_wealth:
+                await self.actualizar_rol_millonario(interaction.guild, announce_channel=interaction.channel)
+
+    # --------------------------------------------------------------------------
+    #                    SLASH COMMAND IMPLEMENTATIONS (CONTINUED)
+    # --------------------------------------------------------------------------
+
+    async def _coin_impl(self, interaction: discord.Interaction, monto: str):
+        """Implementación compartida para /coin y %coin."""
+        user_id = interaction.user.id
+        eleccion = "cara"  # For slash commands, we use a choice parameter instead
+        # Note: The slash command doesn't have eleccion as a parameter, 
+        # so we'll handle the choice in the slash command itself
+        # This is a simplified version - the full logic would need the choice
+        await interaction.response.send_message("⚠️ /coin requiere eleccion (cara/cruz). Usa el comando de prefijo %coin por ahora.")
+
+    async def _ruleta_impl(self, interaction: discord.Interaction, color: str, monto: str):
+        """Implementación compartida para /ruleta y %ruleta."""
+        await interaction.response.send_message("⚠️ /ruleta en desarrollo. Usa %ruleta por ahora.")
+
+    async def _deposit_impl(self, interaction: discord.Interaction, monto: str):
+        """Implementación compartida para /deposit y %deposit."""
+        await interaction.response.send_message("⚠️ /deposit en desarrollo. Usa %deposit por ahora.")
+
+    async def _withdraw_impl(self, interaction: discord.Interaction, monto: str):
+        """Implementación compartida para /withdraw y %withdraw."""
+        await interaction.response.send_message("⚠️ /withdraw en desarrollo. Usa %withdraw por ahora.")
+
+    async def _pay_impl(self, interaction: discord.Interaction, usuario: discord.User, monto: str):
+        """Implementación compartida para /pay y %pay."""
+        await interaction.response.send_message("⚠️ /pay en desarrollo. Usa %pay por ahora.")
+
+    async def _rob_impl(self, interaction: discord.Interaction, victima: discord.User):
+        """Implementación compartida para /rob y %rob."""
+        await interaction.response.send_message("⚠️ /rob en desarrollo. Usa %rob por ahora.")
+
+    async def _blackjack_impl(self, interaction: discord.Interaction, monto: str):
+        """Implementación compartida para /blackjack y %blackjack."""
+        await interaction.response.send_message("⚠️ /blackjack en desarrollo. Usa %blackjack por ahora.")
+
+    async def _tienda_impl(self, interaction: discord.Interaction):
+        """Implementación compartida para /tienda y %tienda."""
+        await interaction.response.send_message("⚠️ /tienda en desarrollo. Usa %tienda por ahora.")
+
+    async def _comprar_impl(self, interaction: discord.Interaction, item: str, cantidad: int):
+        """Implementación compartida para /comprar y %comprar."""
+        await interaction.response.send_message("⚠️ /comprar en desarrollo. Usa %comprar por ahora.")
+
+    async def _inv_impl(self, interaction: discord.Interaction, target: discord.User):
+        """Implementación compartida para /inv y %inv."""
+        await interaction.response.send_message("⚠️ /inv en desarrollo. Usa %inv por ahora.")
+
+    async def _usar_impl(self, interaction: discord.Interaction, item: str):
+        """Implementación compartida para /usar y %usar."""
+        await interaction.response.send_message("⚠️ /usar en desarrollo. Usa %usar por ahora.")
+
+    async def _loteria_impl(self, interaction: discord.Interaction):
+        """Implementación compartida para /loteria y %loteria."""
+        await interaction.response.send_message("⚠️ /loteria en desarrollo. Usa %loteria por ahora.")
+
+    async def _ticket_impl(self, interaction: discord.Interaction, cantidad: int):
+        """Implementación compartida para /ticket y %ticket."""
+        await interaction.response.send_message("⚠️ /ticket en desarrollo. Usa %ticket por ahora.")
+
+    async def _rank_impl(self, interaction: discord.Interaction):
+        """Implementación compartida para /rank y %rank."""
+        await interaction.response.send_message("⚠️ /rank en desarrollo. Usa %rank por ahora.")
+
+    async def _duelo_impl(self, interaction: discord.Interaction, oponente: discord.User, monto: str):
+        """Implementación compartida para /duelo y %duelo."""
+        await interaction.response.send_message("⚠️ /duelo en desarrollo. Usa %duelo por ahora.")
+
+    async def _bet_impl(self, interaction: discord.Interaction, lado: discord.User, monto: str):
+        """Implementación compartida para /bet y %bet."""
+        await interaction.response.send_message("⚠️ /bet en desarrollo. Usa %bet por ahora.")
+
+    async def _rebobinar_impl(self, interaction: discord.Interaction):
+        """Implementación compartida para /rebobinar y %rebobinar."""
+        await interaction.response.send_message("⚠️ /rebobinar en desarrollo. Usa %rebobinar por ahora.")
+
+    async def _jail_impl(self, interaction: discord.Interaction, usuario: discord.User, minutos: int):
+        """Implementación compartida para /jail y %jail."""
+        await interaction.response.send_message("⚠️ /jail en desarrollo. Usa %jail por ahora.")
+
+    async def _unjail_impl(self, interaction: discord.Interaction, usuario: discord.User):
+        """Implementación compartida para /unjail y %unjail."""
+        await interaction.response.send_message("⚠️ /unjail en desarrollo. Usa %unjail por ahora.")
+
+    async def _addmoney_impl(self, interaction: discord.Interaction, usuario: discord.User, monto: int, destino: str):
+        """Implementación compartida para /addmoney y %addmoney."""
+        await interaction.response.send_message("⚠️ /addmoney en desarrollo. Usa %addmoney por ahora.")
+
+    async def _setmoney_impl(self, interaction: discord.Interaction, usuario: discord.User, wallet: int, bank: int = None):
+        """Implementación compartida para /setmoney y %setmoney."""
+        await interaction.response.send_message("⚠️ /setmoney en desarrollo. Usa %setmoney por ahora.")
 
     # --------------------------------------------------------------------------
     #                    COMANDO: COIN / CARA O CRUZ
@@ -1709,7 +1920,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
     # --------------------------------------------------------------------------
 
     @commands.command(name="bal", aliases=["balance", "cartera", "plata", "billetera"])
-    async def balance(self, ctx: commands.Context, target: Optional[discord.Member] = None):
+    async def balance(self, ctx: commands.Context, target: discord.Member | None = None):
         """Consulta el estado financiero y penal de un vecino del barrio."""
         member = target or ctx.author
         async with self.db.lock:
@@ -1743,7 +1954,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
 
     @commands.command(name="unjail", hidden=True)
     @commands.is_owner()
-    async def unjail(self, ctx: commands.Context, target: Optional[discord.Member] = None):
+    async def unjail(self, ctx: commands.Context, target: discord.Member | None = None):
         member = target or ctx.author
         async with self.db.lock:
             user = await self.db.get_user_data(member.id)
@@ -1753,7 +1964,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         await ctx.reply(f"🔓 {member.mention} quedó libre. Su condena fue anulada por ivy.")
 
     @commands.command(name="jail", aliases=["cana", "carcel", "calabozo"])
-    async def jail(self, ctx: commands.Context, target: Optional[discord.Member] = None):
+    async def jail(self, ctx: commands.Context, target: discord.Member | None = None):
         """Verifica la situación penal de un usuario en el calabozo municipal."""
         member = target or ctx.author
         async with self.db.lock:
@@ -1872,6 +2083,136 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
 
         embed.set_footer(text="Carlos always says: don't let wealth get to your head.")
         await ctx.reply(embed=embed)
+
+    # --------------------------------------------------------------------------
+    #                       SLASH COMMANDS (app_commands)
+    # --------------------------------------------------------------------------
+
+    @app_commands.command(name="bal", description="Consulta tu saldo de almas (mano y banco)")
+    @app_commands.describe(usuario="Usuario a consultar (opcional, por defecto tú)")
+    async def slash_bal(self, interaction: discord.Interaction, usuario: discord.User = None):
+        target = usuario or interaction.user
+        await self._bal_impl(interaction, target)
+
+    @app_commands.command(name="work", description="Trabaja para ganar almas (cooldown 1h, reducido con Cafe de Carlos)")
+    async def slash_work(self, interaction: discord.Interaction):
+        await self._work_impl(interaction)
+
+    @app_commands.command(name="coin", description="Apuesta cara o cruz (x2)")
+    @app_commands.describe(monto="Cantidad a apostar (ej: 100, half, all)")
+    async def slash_coin(self, interaction: discord.Interaction, monto: str):
+        await self._coin_impl(interaction, monto)
+
+    @app_commands.command(name="ruleta", description="Apuesta a rojo/negro/verde en la ruleta")
+    @app_commands.describe(
+        color="Color: rojo, negro o verde",
+        monto="Cantidad a apostar (ej: 100, half, all)"
+    )
+    @app_commands.choices(color=[
+        app_commands.Choice(name="Rojo", value="rojo"),
+        app_commands.Choice(name="Negro", value="negro"),
+        app_commands.Choice(name="Verde", value="verde"),
+    ])
+    async def slash_ruleta(self, interaction: discord.Interaction, color: app_commands.Choice[str], monto: str):
+        await self._ruleta_impl(interaction, color.value, monto)
+
+    @app_commands.command(name="deposit", description="Deposita almas en el banco")
+    @app_commands.describe(monto="Cantidad a depositar (ej: 100, half, all)")
+    async def slash_deposit(self, interaction: discord.Interaction, monto: str):
+        await self._deposit_impl(interaction, monto)
+
+    @app_commands.command(name="withdraw", description="Retira almas del banco")
+    @app_commands.describe(monto="Cantidad a retirar (ej: 100, half, all)")
+    async def slash_withdraw(self, interaction: discord.Interaction, monto: str):
+        await self._withdraw_impl(interaction, monto)
+
+    @app_commands.command(name="pay", description="Transfiere almas a otro usuario")
+    @app_commands.describe(usuario="Usuario destinatario", monto="Cantidad a transferir (ej: 100, half, all)")
+    async def slash_pay(self, interaction: discord.Interaction, usuario: discord.User, monto: str):
+        await self._pay_impl(interaction, usuario, monto)
+
+    @app_commands.command(name="rob", description="Intenta robar a otro usuario (riesgo de multa/carcel)")
+    @app_commands.describe(victima="Usuario a quien robar")
+    async def slash_rob(self, interaction: discord.Interaction, victima: discord.User):
+        await self._rob_impl(interaction, victima)
+
+    @app_commands.command(name="blackjack", description="Juega Blackjack (21) contra la banca")
+    @app_commands.describe(monto="Cantidad a apostar (ej: 100, half, all)")
+    async def slash_blackjack(self, interaction: discord.Interaction, monto: str):
+        await self._blackjack_impl(interaction, monto)
+
+    @app_commands.command(name="tienda", description="Abre la tienda callejera")
+    async def slash_tienda(self, interaction: discord.Interaction):
+        await self._tienda_impl(interaction)
+
+    @app_commands.command(name="comprar", description="Compra un articulo de la tienda")
+    @app_commands.describe(item="ID o alias del articulo", cantidad="Cantidad a comprar (default: 1)")
+    async def slash_comprar(self, interaction: discord.Interaction, item: str, cantidad: int = 1):
+        await self._comprar_impl(interaction, item, cantidad)
+
+    @app_commands.command(name="inv", description="Muestra tu inventario y buffs activos")
+    @app_commands.describe(usuario="Usuario a consultar (opcional, por defecto tú)")
+    async def slash_inv(self, interaction: discord.Interaction, usuario: discord.User = None):
+        target = usuario or interaction.user
+        await self._inv_impl(interaction, target)
+
+    @app_commands.command(name="usar", description="Usa un articulo de tu inventario")
+    @app_commands.describe(item="ID o alias del articulo a usar")
+    async def slash_usar(self, interaction: discord.Interaction, item: str):
+        await self._usar_impl(interaction, item)
+
+    @app_commands.command(name="loteria", description="Muestra el estado del Gran Pozo Comunitario")
+    async def slash_loteria(self, interaction: discord.Interaction):
+        await self._loteria_impl(interaction)
+
+    @app_commands.command(name="ticket", description="Compra boletos para la loteria semanal")
+    @app_commands.describe(cantidad="Numero de boletos (max 10 por usuario, 2000 c/u)")
+    async def slash_ticket(self, interaction: discord.Interaction, cantidad: int):
+        await self._ticket_impl(interaction, cantidad)
+
+    @app_commands.command(name="rank", description="Ranking de los mas ricos del barrio")
+    async def slash_rank(self, interaction: discord.Interaction):
+        await self._rank_impl(interaction)
+
+    @app_commands.command(name="duelo", description="Reta a un duelo callejero con apuestas")
+    @app_commands.describe(oponente="Usuario a retar", monto="Apuesta inicial (ej: 100, half, all)")
+    async def slash_duelo(self, interaction: discord.Interaction, oponente: discord.User, monto: str):
+        await self._duelo_impl(interaction, oponente, monto)
+
+    @app_commands.command(name="bet", description="Apuesta en un duelo en curso")
+    @app_commands.describe(lado="Usuario por quien apostar", monto="Cantidad a apostar")
+    async def slash_bet(self, interaction: discord.Interaction, lado: discord.User, monto: str):
+        await self._bet_impl(interaction, lado, monto)
+
+    @app_commands.command(name="rebobinar", description="Usa el Cronometro de Paradox para recuperar tu ultima perdida")
+    async def slash_rebobinar(self, interaction: discord.Interaction):
+        await self._rebobinar_impl(interaction)
+
+    @app_commands.command(name="jail", description="(Admin) Envia a un usuario a prision")
+    @app_commands.describe(usuario="Usuario a encarcelar", minutos="Duracion en minutos (default: 10)")
+    @app_commands.default_permissions(manage_guild=True)
+    async def slash_jail(self, interaction: discord.Interaction, usuario: discord.User, minutos: int = 10):
+        await self._jail_impl(interaction, usuario, minutos)
+
+    @app_commands.command(name="unjail", description="(Admin) Libera a un usuario de prision")
+    @app_commands.describe(usuario="Usuario a liberar")
+    @app_commands.default_permissions(manage_guild=True)
+    async def slash_unjail(self, interaction: discord.Interaction, usuario: discord.User):
+        await self._unjail_impl(interaction, usuario)
+
+    @app_commands.command(name="addmoney", description="(Owner) Añade/quita almas a un usuario")
+    @app_commands.describe(usuario="Usuario objetivo", monto="Cantidad (negativo para quitar)", destino="wallet o bank")
+    @app_commands.choices(destino=[
+        app_commands.Choice(name="Mano (wallet)", value="wallet"),
+        app_commands.Choice(name="Banco (bank)", value="bank"),
+    ])
+    async def slash_addmoney(self, interaction: discord.Interaction, usuario: discord.User, monto: int, destino: app_commands.Choice[str] = None):
+        await self._addmoney_impl(interaction, usuario, monto, destino.value if destino else "wallet")
+
+    @app_commands.command(name="setmoney", description="(Owner) Fija el balance exacto de un usuario")
+    @app_commands.describe(usuario="Usuario objetivo", wallet="Saldo en mano", bank="Saldo en banco (opcional)")
+    async def slash_setmoney(self, interaction: discord.Interaction, usuario: discord.User, wallet: int, bank: int = None):
+        await self._setmoney_impl(interaction, usuario, wallet, bank)
 
     # --------------------------------------------------------------------------
     #                       MANEJO GLOBAL DE ERRORES DEL COG
