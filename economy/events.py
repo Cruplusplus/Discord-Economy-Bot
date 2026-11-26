@@ -547,7 +547,7 @@ class EconomyEventsMixin:
         await self.actualizar_rol_millonario(guild)
 
         async with self.db.lock:
-            user_data = self.db.get_user_data(best_member.id)
+            user_data = await self.db.get_user_data(best_member.id)
             wallet = user_data.get("wallet", 0)
             bank = user_data.get("bank", 0)
             last_gamble = user_data.get("last_gamble", time.time())

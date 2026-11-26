@@ -162,6 +162,9 @@ ITEM_ALIASES: Dict[str, str] = {
 }
 
 
+from collections.abc import Mapping
+
+
 def get_item(query: str) -> Optional[ShopItem]:
     """Obtiene un articulo del catalogo a partir de su ID o alias."""
     clean = query.strip().lower()
@@ -172,7 +175,7 @@ def get_item(query: str) -> Optional[ShopItem]:
 def get_user_inventory(user_data: Dict[str, Any]) -> Dict[str, int]:
     """Retorna el inventario del usuario asegurando un diccionario limpio."""
     inv = user_data.setdefault("inventory", {})
-    if not isinstance(inv, dict):
+    if not isinstance(inv, Mapping):
         user_data["inventory"] = {}
         return user_data["inventory"]
     return inv
@@ -181,7 +184,7 @@ def get_user_inventory(user_data: Dict[str, Any]) -> Dict[str, int]:
 def get_user_buffs(user_data: Dict[str, Any]) -> Dict[str, float]:
     """Retorna los efectos temporales activos del usuario."""
     buffs = user_data.setdefault("buffs", {})
-    if not isinstance(buffs, dict):
+    if not isinstance(buffs, Mapping):
         user_data["buffs"] = {}
         return user_data["buffs"]
     return buffs
