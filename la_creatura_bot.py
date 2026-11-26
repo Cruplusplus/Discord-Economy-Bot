@@ -46,6 +46,7 @@ giphy_api_key = os.getenv("GIPHY_API_KEY", "")
 deadlock_senal_id = parse_int_env("DEADLOCK_SIGNAL_ROLE_ID", 0)
 ivy_online_channel = parse_int_env("IVY_ONLINE_CHANNEL_ID", 0)
 self_discord_id = parse_int_env("OWNER_DISCORD_ID", 0)
+slash_command_guild_id = parse_int_env("SLASH_COMMAND_GUILD_ID", 0)
 
 # Constantes multimedia y listas de recursos estáticos
 import sys
@@ -136,11 +137,17 @@ async def on_ready():
             # Sincronización global (puede tardar hasta 1 hora en propagarse)
             print("[SYNC] Iniciando sincronizacion de comandos slash...", flush=True)
 
-            guild = discord.Object(id=1465522164521500683)
-            synced = await bot.tree.sync(guild=guild)
+            if slash_command_guild_id:
+                guild = discord.Object(id=slash_command_guild_id)
+                synced = await bot.tree.sync(guild=guild)
+                sync_scope = f"servidor {slash_command_guild_id}"
+            else:
+                synced = await bot.tree.sync()
+                sync_scope = "globalmente"
 
             print(
-                f"[SYNC] {len(synced)} comandos slash sincronizados: {[c.name for c in synced]}",
+                f"[SYNC] {len(synced)} comandos slash sincronizados {sync_scope}: "
+                f"{[c.name for c in synced]}",
                 flush=True,
             )
         except (discord.HTTPException, discord.InvalidData) as e:
