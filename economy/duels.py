@@ -41,18 +41,24 @@ class EconomyDuelsMixin:
 
         # Restriccion de canal si DUEL_CHANNEL_ID esta configurado
         if DUEL_CHANNEL_ID and ctx.channel.id != DUEL_CHANNEL_ID:
-            await ctx.reply(f"❌ Los duelos solo se pueden celebrar en el callejón asignado: <#{DUEL_CHANNEL_ID}>.")
+            await ctx.reply(
+                f"❌ Los duelos solo se pueden celebrar en el callejón asignado: <#{DUEL_CHANNEL_ID}>."
+            )
             return
 
         guild_id = ctx.guild.id
 
         # 1. Un solo duelo a la vez por servidor
         if guild_id in self.active_duels or guild_id in self.pending_challenges:
-            await ctx.reply("❌ Ya hay un duelo en curso o un desafío pendiente en este barrio. ¡Un combate a la vez, chacho!")
+            await ctx.reply(
+                "❌ Ya hay un duelo en curso o un desafío pendiente en este barrio. ¡Un combate a la vez, chacho!"
+            )
             return
 
         if member.id == ctx.author.id:
-            await ctx.reply("❌ No puedes retarte a ti mismo, chacho. Busca a alguien con quien medir fuerzas.")
+            await ctx.reply(
+                "❌ No puedes retarte a ti mismo, chacho. Busca a alguien con quien medir fuerzas."
+            )
             return
         if member.bot:
             await ctx.reply("❌ Las gárgolas no apostamos contra bots, no tienen almas que perder.")
@@ -100,13 +106,15 @@ class EconomyDuelsMixin:
                 f"• Reacciona con ✅ para **Aceptar el duelo**\n"
                 f"• Reacciona con ❌ para **Rechazar y huir**"
             ),
-            color=discord.Color.red()
+            color=discord.Color.red(),
         )
         embed_desafio.set_thumbnail(url=ctx.author.display_avatar.url)
         embed_desafio.set_footer(text="Carlos always says: choose your fights wisely.")
 
         try:
-            request = await ctx.send(content=f"{member.mention} ¡Te han desafiado a un combate!", embed=embed_desafio)
+            request = await ctx.send(
+                content=f"{member.mention} ¡Te han desafiado a un combate!", embed=embed_desafio
+            )
             await request.add_reaction("✅")
             await request.add_reaction("❌")
 
@@ -118,10 +126,14 @@ class EconomyDuelsMixin:
                 )
 
             try:
-                reaction, _ = await self.bot.wait_for("reaction_add", timeout=DUEL_INVITE_TIMEOUT, check=reaction_check)
+                reaction, _ = await self.bot.wait_for(
+                    "reaction_add", timeout=DUEL_INVITE_TIMEOUT, check=reaction_check
+                )
             except TimeoutError:
                 self.pending_challenges.discard(guild_id)
-                await ctx.send(f"⌛ El reto expiró: {member.mention} no respondió a tiempo. Los callejones siguen en silencio.")
+                await ctx.send(
+                    f"⌛ El reto expiró: {member.mention} no respondió a tiempo. Los callejones siguen en silencio."
+                )
                 return
 
             if str(reaction.emoji) == "❌":
@@ -136,9 +148,13 @@ class EconomyDuelsMixin:
 
                 faltantes = []
                 if attacker_data["wallet"] < stake:
-                    faltantes.append(f"{ctx.author.mention} (tiene **{attacker_data['wallet']:,} {CURRENCY_SYMBOL}** en mano)")
+                    faltantes.append(
+                        f"{ctx.author.mention} (tiene **{attacker_data['wallet']:,} {CURRENCY_SYMBOL}** en mano)"
+                    )
                 if enemy_data["wallet"] < stake:
-                    faltantes.append(f"{member.mention} (tiene **{enemy_data['wallet']:,} {CURRENCY_SYMBOL}** en mano)")
+                    faltantes.append(
+                        f"{member.mention} (tiene **{enemy_data['wallet']:,} {CURRENCY_SYMBOL}** en mano)"
+                    )
 
                 if faltantes:
                     self.pending_challenges.discard(guild_id)
@@ -186,23 +202,25 @@ class EconomyDuelsMixin:
                     f"`{ctx.prefix}bet {ctx.author.display_name} <monto>` o `{ctx.prefix}bet {member.display_name} <monto>`\n"
                     f"*(¡Un solo duelo a la vez, no necesitas ningún ID!)*"
                 ),
-                color=discord.Color.gold()
+                color=discord.Color.gold(),
             )
             if gif_pelea:
                 embed_duelo.set_image(url=gif_pelea)
-            embed_duelo.set_footer(text="Todo Spanish Harlem se acerca a mirar. ¡Hagan sus apuestas!")
+            embed_duelo.set_footer(
+                text="Todo Spanish Harlem se acerca a mirar. ¡Hagan sus apuestas!"
+            )
 
             await ctx.send(
                 content=f"@everyone ⚔️ ¡Comenzó el duelo entre {ctx.author.mention} y {member.mention}! ¡Apuestas abiertas: terminan <t:{ends_at_ts}:R>!",
                 embed=embed_duelo,
-                allowed_mentions=discord.AllowedMentions(everyone=True, users=True)
+                allowed_mentions=discord.AllowedMentions(everyone=True, users=True),
             )
 
             asyncio.create_task(self._resolve_duel(guild_id))
 
-        except Exception as e:
+        except Exception:
             self.pending_challenges.discard(guild_id)
-            raise e
+            raise
 
     async def _resolve_duel(self, guild_id: int) -> None:
         """Resuelve el combate al finalizar el tiempo de apuestas y liquida premios."""
@@ -249,20 +267,26 @@ class EconomyDuelsMixin:
                 for bet in winning_bets:
                     bettor_data = self.db.get_user_data(bet["user"].id)
                     if losing_pool > 0:
-                        ganancia_extra = int(losing_pool * bet["amount"] / winning_total) if winning_total > 0 else 0
+                        ganancia_extra = (
+                            int(losing_pool * bet["amount"] / winning_total)
+                            if winning_total > 0
+                            else 0
+                        )
                     else:
                         # Si no hubo contra-apostantes, recibe un porcentaje de ganancia sobre su apuesta
                         ganancia_extra = max(1, int(bet["amount"] * DUEL_UNOPPOSED_PROFIT_PERCENT))
 
                     retorno_total = bet["amount"] + ganancia_extra
                     bettor_data["wallet"] += retorno_total
-                    payouts_info.append({
-                        "user": bet["user"],
-                        "won": True,
-                        "bet": bet["amount"],
-                        "profit": ganancia_extra,
-                        "total": retorno_total
-                    })
+                    payouts_info.append(
+                        {
+                            "user": bet["user"],
+                            "won": True,
+                            "bet": bet["amount"],
+                            "profit": ganancia_extra,
+                            "total": retorno_total,
+                        }
+                    )
             else:
                 # Si nadie le aposto al ganador, el ganador del duelo se queda con el pozo perdedor
                 winner_data["wallet"] += losing_pool
@@ -275,23 +299,28 @@ class EconomyDuelsMixin:
                     "timestamp": time.time(),
                     "reverted": False,
                 }
-                payouts_info.append({
-                    "user": bet["user"],
-                    "won": False,
-                    "bet": bet["amount"],
-                    "profit": -bet["amount"],
-                    "total": 0
-                })
+                payouts_info.append(
+                    {
+                        "user": bet["user"],
+                        "won": False,
+                        "bet": bet["amount"],
+                        "profit": -bet["amount"],
+                        "total": 0,
+                    }
+                )
 
-        self._log.info("Duelo resuelto", extra={
-            "guild_id": guild_id,
-            "winner_id": winner.id,
-            "loser_id": loser_id,
-            "stake": stake,
-            "total_bets": len(duel["bets"]),
-            "losing_pool": losing_pool,
-            "winning_total": winning_total,
-        })
+        self._log.info(
+            "Duelo resuelto",
+            extra={
+                "guild_id": guild_id,
+                "winner_id": winner.id,
+                "loser_id": loser_id,
+                "stake": stake,
+                "total_bets": len(duel["bets"]),
+                "losing_pool": losing_pool,
+                "winning_total": winning_total,
+            },
+        )
 
         await self.db.save()
 
@@ -308,7 +337,7 @@ class EconomyDuelsMixin:
                 f"💥 ¡Tremendo derechazo de piedra! **{winner.mention}** mandó a dormir a **{loser.mention}**.\n\n"
                 f"👑 **Premio del campeón:** **+{duel_pool:,} {CURRENCY_SYMBOL}**\n"
             ),
-            color=discord.Color.green()
+            color=discord.Color.green(),
         )
         if not winning_bets and losing_pool > 0:
             embed_res.description += f"🎁 *(Nadie apostó por {winner.display_name}, ¡así que también se llevó el pozo de apuestas de **+{losing_pool:,} {CURRENCY_SYMBOL}**!)*\n"
@@ -319,19 +348,29 @@ class EconomyDuelsMixin:
         if payouts_info:
             ganadores_str = [
                 f"• {p['user'].mention}: **+{p['profit']:,} {CURRENCY_SYMBOL}** *(Devuelto: {p['total']:,})*"
-                for p in payouts_info if p["won"]
+                for p in payouts_info
+                if p["won"]
             ]
             perdedores_str = [
                 f"• {p['user'].mention}: **-{p['bet']:,} {CURRENCY_SYMBOL}**"
-                for p in payouts_info if not p["won"]
+                for p in payouts_info
+                if not p["won"]
             ]
 
             if ganadores_str:
-                embed_res.add_field(name="🎉 Apostadores Ganadores", value="\n".join(ganadores_str), inline=False)
+                embed_res.add_field(
+                    name="🎉 Apostadores Ganadores", value="\n".join(ganadores_str), inline=False
+                )
             if perdedores_str:
-                embed_res.add_field(name="💀 Apostadores Perdedores", value="\n".join(perdedores_str), inline=False)
+                embed_res.add_field(
+                    name="💀 Apostadores Perdedores", value="\n".join(perdedores_str), inline=False
+                )
         else:
-            embed_res.add_field(name="🎲 Apuestas Externas", value="Nadie de la tribuna se animó a poner fichas en este combate.", inline=False)
+            embed_res.add_field(
+                name="🎲 Apuestas Externas",
+                value="Nadie de la tribuna se animó a poner fichas en este combate.",
+                inline=False,
+            )
 
         if gif_victoria:
             embed_res.set_image(url=gif_victoria)
@@ -342,7 +381,8 @@ class EconomyDuelsMixin:
         notification_text = f"@everyone 📢 ¡El duelo ha terminado! Ganador: {winner.mention}"
         if payouts_info:
             resumen_pings = " | " + " ".join(
-                f"{p['user'].mention} ({'Ganaste' if p['won'] else 'Perdiste'})" for p in payouts_info
+                f"{p['user'].mention} ({'Ganaste' if p['won'] else 'Perdiste'})"
+                for p in payouts_info
             )
             # Evitar exceder el limite de 2000 caracteres de Discord
             if len(notification_text + resumen_pings) < 1950:
@@ -351,7 +391,7 @@ class EconomyDuelsMixin:
         await channel.send(
             content=notification_text,
             embed=embed_res,
-            allowed_mentions=discord.AllowedMentions(everyone=True, users=True)
+            allowed_mentions=discord.AllowedMentions(everyone=True, users=True),
         )
 
     @commands.command(name="bet", aliases=["apostar"])
@@ -362,7 +402,9 @@ class EconomyDuelsMixin:
 
         # Restriccion de canal si DUEL_CHANNEL_ID esta configurado
         if DUEL_CHANNEL_ID and ctx.channel.id != DUEL_CHANNEL_ID:
-            await ctx.reply(f"❌ Las apuestas de combate solo se pueden realizar en el callejón asignado: <#{DUEL_CHANNEL_ID}>.")
+            await ctx.reply(
+                f"❌ Las apuestas de combate solo se pueden realizar en el callejón asignado: <#{DUEL_CHANNEL_ID}>."
+            )
             return
 
         guild_id = ctx.guild.id
@@ -373,7 +415,9 @@ class EconomyDuelsMixin:
             return
 
         if duel["ends_at"] <= time.time():
-            await ctx.reply("❌ Las apuestas para este combate ya cerraron. ¡La pelea está en su clímax!")
+            await ctx.reply(
+                "❌ Las apuestas para este combate ya cerraron. ¡La pelea está en su clímax!"
+            )
             return
 
         # Flexibilidad en el orden de argumentos: '%bet @jugador 100' o '%bet 100 @jugador'
@@ -398,18 +442,24 @@ class EconomyDuelsMixin:
             return
 
         if ctx.author.id in (duel["attacker"].id, duel["enemy"].id):
-            await ctx.reply("❌ Los duelistas no pueden apostar por fuera, ya tienen su bolsa y su honra en juego.")
+            await ctx.reply(
+                "❌ Los duelistas no pueden apostar por fuera, ya tienen su bolsa y su honra en juego."
+            )
             return
 
         if ctx.author.id in duel["bets"]:
-            await ctx.reply("❌ Ya tienes una apuesta registrada en este combate. ¡No se puede cambiar de bando!")
+            await ctx.reply(
+                "❌ Ya tienes una apuesta registrada en este combate. ¡No se puede cambiar de bando!"
+            )
             return
 
         async with self.db.lock:
             bettor_data = self.db.get_user_data(ctx.author.id)
             amount = self._parse_amount(monto_str, bettor_data["wallet"])
             if amount is None or amount <= 0 or amount > bettor_data["wallet"]:
-                await ctx.reply(f"❌ Fondos insuficientes en mano. Solo tienes **{bettor_data['wallet']:,} {CURRENCY_SYMBOL}**.")
+                await ctx.reply(
+                    f"❌ Fondos insuficientes en mano. Solo tienes **{bettor_data['wallet']:,} {CURRENCY_SYMBOL}**."
+                )
                 return
 
             bettor_data["wallet"] -= amount
@@ -429,10 +479,12 @@ class EconomyDuelsMixin:
                 f"💰 **Billetera restante:** **{bettor_data['wallet']:,} {CURRENCY_SYMBOL}**\n"
                 f"⏳ **Tiempo restante para apostar:** <t:{ends_at_ts}:R>"
             ),
-            color=discord.Color.teal()
+            color=discord.Color.teal(),
         )
         # Registrar actividad de riesgo para el apostador
-        is_richest, is_valid_reset, req_bet = await self._registrar_actividad_riesgo(ctx.author.id, amount, ctx.guild)
+        is_richest, is_valid_reset, req_bet = await self._registrar_actividad_riesgo(
+            ctx.author.id, amount, ctx.guild
+        )
         if is_richest and not is_valid_reset:
             embed_bet.set_footer(
                 text=f"⚠️ [Magnate] Apuesta insuficiente para resetear inactividad. Mínimo: {req_bet:,} {CURRENCY_SYMBOL} ({int(MIN_RISK_BET_PERCENT * 100)}% de tu fortuna)."

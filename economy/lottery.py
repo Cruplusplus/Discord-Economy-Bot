@@ -41,20 +41,19 @@ class LotteryManager:
         """Suma un importe al pozo acumulado (comisiones de timba, multas, etc.)."""
         if amount <= 0:
             return 0
-        
+
         async with self.cog.db.lock:
             lottery = await self.get_lottery_data()
             new_jackpot = lottery.get("jackpot", LOTTERY_BASE_JACKPOT) + amount
-            
+
             async with aiosqlite.connect(self.cog.db.file_path) as db:
                 await db.execute("PRAGMA foreign_keys=ON")
-                await db.execute(
-                    "UPDATE lottery SET jackpot = ? WHERE id = 1",
-                    (new_jackpot,)
-                )
+                await db.execute("UPDATE lottery SET jackpot = ? WHERE id = 1", (new_jackpot,))
                 await db.commit()
-            
-            self._log.info("Pozo de lotería incrementado", extra={"amount": amount, "new_jackpot": new_jackpot})
+
+            self._log.info(
+                "Pozo de lotería incrementado", extra={"amount": amount, "new_jackpot": new_jackpot}
+            )
             return new_jackpot
 
     async def buy_tickets(self, user_id: int, count: int) -> tuple[bool, str, int, int]:
@@ -69,33 +68,37 @@ class LotteryManager:
             async with aiosqlite.connect(self.cog.db.file_path) as db:
                 await db.execute("PRAGMA foreign_keys=ON")
                 db.row_factory = aiosqlite.Row
-                
+
                 # Obtener wallet del usuario
-                async with db.execute("SELECT wallet FROM users WHERE user_id = ?", (user_id,)) as cursor:
+                async with db.execute(
+                    "SELECT wallet FROM users WHERE user_id = ?", (user_id,)
+                ) as cursor:
                     row = await cursor.fetchone()
                 wallet = row["wallet"] if row else 0
-                
+
                 # Obtener jackpot y tickets actuales
                 async with db.execute("SELECT jackpot FROM lottery WHERE id = 1") as cursor:
                     row = await cursor.fetchone()
                 jackpot = row["jackpot"] if row else LOTTERY_BASE_JACKPOT
-                
+
                 tickets_dict = {}
                 async with db.execute(
                     "SELECT user_id, ticket_count FROM lottery_tickets WHERE draw_id = 1 AND ticket_count > 0"
                 ) as cursor:
                     async for trow in cursor:
                         tickets_dict[str(trow["user_id"])] = trow["ticket_count"]
-                
+
                 user_key = str(user_id)
                 current_user_tickets = tickets_dict.get(user_key, 0)
-                
+
                 if current_user_tickets + count > LOTTERY_MAX_TICKETS_PER_USER:
                     disponibles = max(0, LOTTERY_MAX_TICKETS_PER_USER - current_user_tickets)
                     return (
                         False,
-                        f"❌ ¡Límite anti-monopolio alcanzado! Cada vecino puede tener un máximo de **{LOTTERY_MAX_TICKETS_PER_USER} tickets** por sorteo.\n"
-                        f"Actualmente tienes **{current_user_tickets}** boletos (solo puedes comprar **{disponibles}** más).",
+                        (
+                            f"❌ ¡Límite anti-monopolio alcanzado! Cada vecino puede tener un máximo de **{LOTTERY_MAX_TICKETS_PER_USER} tickets** por sorteo.\n"
+                            f"Actualmente tienes **{current_user_tickets}** boletos (solo puedes comprar **{disponibles}** más)."
+                        ),
                         current_user_tickets,
                         jackpot,
                     )
@@ -104,8 +107,10 @@ class LotteryManager:
                 if wallet < total_cost:
                     return (
                         False,
-                        f"❌ Te faltan almas en mano. Comprar **{count} ticket(s)** cuesta **{total_cost:,} {CURRENCY_SYMBOL}** "
-                        f"y solo tienes **{wallet:,} {CURRENCY_SYMBOL}**.",
+                        (
+                            f"❌ Te faltan almas en mano. Comprar **{count} ticket(s)** cuesta **{total_cost:,} {CURRENCY_SYMBOL}** "
+                            f"y solo tienes **{wallet:,} {CURRENCY_SYMBOL}**."
+                        ),
                         current_user_tickets,
                         jackpot,
                     )
@@ -113,10 +118,9 @@ class LotteryManager:
                 # Cobrar y acreditar al pozo - todo en una transacción
                 # Descontar wallet
                 await db.execute(
-                    "UPDATE users SET wallet = wallet - ? WHERE user_id = ?",
-                    (total_cost, user_id)
+                    "UPDATE users SET wallet = wallet - ? WHERE user_id = ?", (total_cost, user_id)
                 )
-                
+
                 # Actualizar/insertar ticket
                 new_ticket_count = current_user_tickets + count
                 await db.execute(
@@ -124,32 +128,38 @@ class LotteryManager:
                     INSERT OR REPLACE INTO lottery_tickets (user_id, ticket_count, draw_id)
                     VALUES (?, ?, 1)
                     """,
-                    (user_id, new_ticket_count)
+                    (user_id, new_ticket_count),
                 )
-                
+
                 # Actualizar jackpot
                 new_jackpot = jackpot + total_cost
-                await db.execute(
-                    "UPDATE lottery SET jackpot = ? WHERE id = 1",
-                    (new_jackpot,)
-                )
-                
+                await db.execute("UPDATE lottery SET jackpot = ? WHERE id = 1", (new_jackpot,))
+
                 await db.commit()
 
-            self._log.info("Boletos de lotería comprados", extra={"user_id": user_id, "count": count, "total_cost": total_cost, "new_ticket_count": new_ticket_count, "new_jackpot": new_jackpot})
+            self._log.info(
+                "Boletos de lotería comprados",
+                extra={
+                    "user_id": user_id,
+                    "count": count,
+                    "total_cost": total_cost,
+                    "new_ticket_count": new_ticket_count,
+                    "new_jackpot": new_jackpot,
+                },
+            )
 
             return (
                 True,
                 random.choice(IVY_LOTTERY_BUY_QUOTES).format(
-                    count=count,
-                    cost=total_cost,
-                    currency=CURRENCY_SYMBOL
+                    count=count, cost=total_cost, currency=CURRENCY_SYMBOL
                 ),
                 new_ticket_count,
                 new_jackpot,
             )
 
-    async def draw_lottery(self, guild: discord.Guild | None) -> tuple[bool, discord.Member | None, int, int]:
+    async def draw_lottery(
+        self, guild: discord.Guild | None
+    ) -> tuple[bool, discord.Member | None, int, int]:
         """
         Realiza el sorteo del pozo ponderado entre los boletos emitidos.
         Retorna: (hubo_ganador, member_ganador, premio_otorgado, total_boletos_participantes)
@@ -158,12 +168,12 @@ class LotteryManager:
             async with aiosqlite.connect(self.cog.db.file_path) as db:
                 await db.execute("PRAGMA foreign_keys=ON")
                 db.row_factory = aiosqlite.Row
-                
+
                 # Obtener jackpot actual y tickets
                 async with db.execute("SELECT jackpot FROM lottery WHERE id = 1") as cursor:
                     row = await cursor.fetchone()
                 jackpot = row["jackpot"] if row else LOTTERY_BASE_JACKPOT
-                
+
                 # Obtener tickets
                 tickets_dict = {}
                 bolillero: list[int] = []
@@ -175,23 +185,30 @@ class LotteryManager:
                         qty = trow["ticket_count"]
                         tickets_dict[str(uid)] = qty
                         bolillero.extend([uid] * qty)
-                
+
                 if not bolillero:
                     self._log.info("Sorteo de lotería sin participantes")
                     return False, None, jackpot, 0
-                
+
                 total_tickets = len(bolillero)
                 winner_id = random.choice(bolillero)
                 now = time.time()
-                
-                self._log.info("Sorteo de lotería realizado", extra={"winner_id": winner_id, "jackpot": jackpot, "total_tickets": total_tickets, "participants": len(tickets_dict)})
-                
+
+                self._log.info(
+                    "Sorteo de lotería realizado",
+                    extra={
+                        "winner_id": winner_id,
+                        "jackpot": jackpot,
+                        "total_tickets": total_tickets,
+                        "participants": len(tickets_dict),
+                    },
+                )
+
                 # Sumar premio al ganador
                 await db.execute(
-                    "UPDATE users SET wallet = wallet + ? WHERE user_id = ?",
-                    (jackpot, winner_id)
+                    "UPDATE users SET wallet = wallet + ? WHERE user_id = ?", (jackpot, winner_id)
                 )
-                
+
                 # Guardar histórico y resetear lotería
                 await db.execute(
                     """
@@ -205,12 +222,12 @@ class LotteryManager:
                         total_drawn = total_drawn + 1
                     WHERE id = 1
                     """,
-                    (winner_id, jackpot, now, total_tickets, now, LOTTERY_BASE_JACKPOT)
+                    (winner_id, jackpot, now, total_tickets, now, LOTTERY_BASE_JACKPOT),
                 )
-                
+
                 # Limpiar tickets
                 await db.execute("DELETE FROM lottery_tickets WHERE draw_id = 1")
-                
+
                 await db.commit()
 
         # Obtener objeto Member del ganador
@@ -295,10 +312,18 @@ class LotteryManager:
                             member_name = m.display_name
                     except ValueError:
                         pass
-                buyer_lines.append(f"• **{member_name}**: {count} ticket(s) ({(count / total_tickets * 100):.1f}%)")
-            embed.add_field(name="👥 Principales Apostadores", value="\n".join(buyer_lines), inline=False)
+                buyer_lines.append(
+                    f"• **{member_name}**: {count} ticket(s) ({(count / total_tickets * 100):.1f}%)"
+                )
+            embed.add_field(
+                name="👥 Principales Apostadores", value="\n".join(buyer_lines), inline=False
+            )
         else:
-            embed.add_field(name="👥 Principales Apostadores", value="*¡Sé el primero en comprar tickets con `%ticket`!*", inline=False)
+            embed.add_field(
+                name="👥 Principales Apostadores",
+                value="*¡Sé el primero en comprar tickets con `%ticket`!*",
+                inline=False,
+            )
 
         # Ultimo ganador
         last_win = lottery.get("last_winner")
@@ -310,7 +335,9 @@ class LotteryManager:
                 inline=False,
             )
 
-        embed.set_footer(text=f"Usa '%ticket <cantidad>' para comprar • Sorteo todos los domingos a las {LOTTERY_DRAW_TIME.strftime('%H:%M')} hs.")
+        embed.set_footer(
+            text=f"Usa '%ticket <cantidad>' para comprar • Sorteo todos los domingos a las {LOTTERY_DRAW_TIME.strftime('%H:%M')} hs."
+        )
         return embed
 
 

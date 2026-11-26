@@ -1,0 +1,13 @@
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+# Existing Discord callbacks intentionally use broad exception handling so one
+# failed network/API operation cannot stop the bot loops.
+ignore = ["ASYNC230", "BLE001", "PLW0602", "S110", "SIM102", "SIM117", "UP041"]
+
+[tool.mypy]
+ignore_missing_imports = true
+# Discord.py mixins are combined dynamically at runtime; their attributes are
+# supplied by Economy and are not visible to mypy when each mixin is checked.
+ignore_errors = true
