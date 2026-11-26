@@ -20,6 +20,7 @@ from discord.ext import commands
 intents = discord.Intents.default()
 intents.message_content = True
 
+
 def parse_int_env(key: str, default: int = 0) -> int:
     val = os.getenv(key)
     if val:
@@ -28,6 +29,7 @@ def parse_int_env(key: str, default: int = 0) -> int:
         except ValueError:
             pass
     return default
+
 
 prefijo = os.getenv("BOT_PREFIX", "%")
 
@@ -44,8 +46,11 @@ giphy_api_key = os.getenv("GIPHY_API_KEY", "")
 deadlock_senal_id = parse_int_env("DEADLOCK_SIGNAL_ROLE_ID", 0)
 ivy_online_channel = parse_int_env("IVY_ONLINE_CHANNEL_ID", 0)
 self_discord_id = parse_int_env("OWNER_DISCORD_ID", 0)
+slash_command_guild_id = parse_int_env("SLASH_COMMAND_GUILD_ID", 0)
 
 # Constantes multimedia y listas de recursos estáticos
+import sys
+
 from constants import (
     HOP_ON_DEADLOCK_LIST,
     LEPOARD_PAW_LIST,
@@ -53,18 +58,18 @@ from constants import (
     ivy_tags,
 )
 
-#code
+# code
 
 deadlock_counter = 0
 shutdown_started = False
 
 
-
 # ===============fx====================
+
 
 async def obtener_gif(tags=None) -> str | None:
     """Busca un GIF en Giphy.
-    
+
     'tags' puede ser:
       - None (usa una búsqueda por defecto o trending)
       - Un string: "gato durmiendo"
@@ -79,12 +84,7 @@ async def obtener_gif(tags=None) -> str | None:
         q = "happy"
 
     url = "https://api.giphy.com/v1/gifs/search"
-    params = {
-        "api_key": giphy_api_key,
-        "q": q,
-        "limit": 25,
-        "rating": "r"
-    }
+    params = {"api_key": giphy_api_key, "q": q, "limit": 25, "rating": "r"}
 
     try:
         async with aiohttp.ClientSession() as session:
@@ -95,12 +95,10 @@ async def obtener_gif(tags=None) -> str | None:
                     if resultados:
                         elegido = random.choice(resultados)
                         return elegido["images"]["original"]["url"]
-    except Exception as e:
+    except (aiohttp.ClientError, TimeoutError) as e:
         print(f"Error al conectar con Giphy: {e}")
 
     return None
-
-
 
 
 def request_shutdown():
@@ -120,10 +118,12 @@ def handle_signal(signum, frame):
     print(f"Signal: {signum}. Killing bot")
     request_shutdown()
 
+
 # cogs
 async def setup_hook():
     await bot.load_extension("economy")
     print("Modulos cargados con exito")
+
 
 bot.setup_hook = setup_hook
 
@@ -131,17 +131,26 @@ bot.setup_hook = setup_hook
 @bot.event
 async def on_ready():
     # Sincronizar comandos slash al estar listo (solo la primera vez)
-    if not hasattr(bot, '_synced_commands'):
+    if not hasattr(bot, "_synced_commands"):
         bot._synced_commands = True
         try:
             # Sincronización global (puede tardar hasta 1 hora en propagarse)
             print("[SYNC] Iniciando sincronizacion de comandos slash...", flush=True)
-            
-            guild = discord.Object(id=1465522164521500683)  
-            synced = await bot.tree.sync(guild=guild)
-            
-            print(f"[SYNC] {len(synced)} comandos slash sincronizados: {[c.name for c in synced]}", flush=True)
-        except Exception as e:
+
+            if slash_command_guild_id:
+                guild = discord.Object(id=slash_command_guild_id)
+                synced = await bot.tree.sync(guild=guild)
+                sync_scope = f"servidor {slash_command_guild_id}"
+            else:
+                synced = await bot.tree.sync()
+                sync_scope = "globalmente"
+
+            print(
+                f"[SYNC] {len(synced)} comandos slash sincronizados {sync_scope}: "
+                f"{[c.name for c in synced]}",
+                flush=True,
+            )
+        except (discord.HTTPException, discord.InvalidData) as e:
             print(f"[ERROR] Error sincronizando comandos slash: {e}", flush=True)
 
     print(f"Bot conectado como {bot.user} (ID: {bot.user.id})", flush=True)
@@ -153,19 +162,22 @@ async def on_ready():
         if canal is not None:
             try:
                 await canal.send("🟢 Looks like I'm missing that job interview...")
-            except Exception as e:
+            except (discord.HTTPException, discord.Forbidden) as e:
                 print(f"No se pudo enviar aviso de inicio al canal {ivy_online_channel}: {e}")
         else:
             print(f"Canal de inicio ({ivy_online_channel}) no encontrado en cache")
 
-    await bot.change_presence(activity=discord.Activity(
-        type=discord.ActivityType.playing,
-        name="Deadlock",
-        details="Wishing the Arroyos were In console.py",
-        state="Wishing the Arroyos were In console.py"
-    ))
+    await bot.change_presence(
+        activity=discord.Activity(
+            type=discord.ActivityType.playing,
+            name="Deadlock",
+            details="Wishing the Arroyos were In console.py",
+            state="Wishing the Arroyos were In console.py",
+        )
+    )
 
-# ===============EVENTS====================   
+
+# ===============EVENTS====================
 
 
 async def shutdown_bot():
@@ -180,7 +192,7 @@ async def shutdown_bot():
         if canal is not None:
             try:
                 await canal.send("🔴 I really need a job.")
-            except Exception:
+            except (discord.HTTPException, discord.Forbidden):
                 pass
     await bot.change_presence(status=discord.Status.invisible)
     await bot.close()
@@ -188,7 +200,10 @@ async def shutdown_bot():
 
 @bot.event
 async def on_disconnect():
-    print("⚠️ Desconectado temporalmente de Discord. discord.py intentará reconectar automáticamente...")
+    print(
+        "⚠️ Desconectado temporalmente de Discord. discord.py intentará reconectar automáticamente..."
+    )
+
 
 @bot.event
 async def on_resumed():
@@ -201,6 +216,7 @@ for sig in (signal.SIGINT, signal.SIGTERM):
     except (AttributeError, ValueError):
         pass
 
+
 @bot.event
 async def on_message(message):
     if message.author == bot.user:
@@ -211,28 +227,30 @@ async def on_message(message):
     if f"{prefijo}" in content:
         await bot.process_commands(message)
         return
-    
+
     if "for ixia" in content:
-        await message.reply("https://tenor.com/view/apollo-deadlock-for-ixia-gif-449243688111567927")
+        await message.reply(
+            "https://tenor.com/view/apollo-deadlock-for-ixia-gif-449243688111567927"
+        )
         await bot.process_commands(message)
         return
-    
-    if "ivy" in content:
 
+    if "ivy" in content:
         randNum = random.randint(1, 8)
-        if(randNum < 3):
+        if randNum < 3:
             gif_url = await obtener_gif(ivy_tags)
             if gif_url:
-                await message.reply(gif_url) 
+                await message.reply(gif_url)
         else:
             randGif = random.choice(LISTA_GIFS)
             await message.reply(f"{randGif}")
 
-    
     # Si defines on_message, DEBES incluir esta línea al final.
     await bot.process_commands(message)
 
+
 # ===============COMMAND====================
+
 
 @bot.command(name="hablar", hidden=True)
 async def hablar(ctx, canal_o_id: str, *, texto: str):
@@ -241,7 +259,9 @@ async def hablar(ctx, canal_o_id: str, *, texto: str):
         return
 
     # 2. Solo el dueño del bot (detección automática de discord.py o por self_discord_id)
-    es_dueno = await bot.is_owner(ctx.author) or (self_discord_id and ctx.author.id == self_discord_id)
+    es_dueno = await bot.is_owner(ctx.author) or (
+        self_discord_id and ctx.author.id == self_discord_id
+    )
     if not es_dueno:
         await ctx.send("❌ No tienes permisos para usar este comando.")
         return
@@ -272,7 +292,9 @@ async def hablar(ctx, canal_o_id: str, *, texto: str):
                 break
 
     if canal is None or not hasattr(canal, "send"):
-        await ctx.send(f"❌ No pude encontrar el canal `{canal_o_id}`. Pasa el ID numérico del canal.")
+        await ctx.send(
+            f"❌ No pude encontrar el canal `{canal_o_id}`. Pasa el ID numérico del canal."
+        )
         return
 
     # 5. Enviar el mensaje al canal
@@ -282,19 +304,23 @@ async def hablar(ctx, canal_o_id: str, *, texto: str):
         await ctx.send(f"✅ Mensaje enviado en #{canal.name} ({guild_name})")
     except discord.Forbidden:
         await ctx.send(f"❌ No tengo permisos suficientes para enviar mensajes en #{canal.name}.")
-    except Exception as e:
+    except (discord.HTTPException, discord.InvalidData) as e:
         await ctx.send(f"❌ Error al enviar el mensaje: {e}")
+
 
 @hablar.error
 async def hablar_error(ctx, error):
     if isinstance(error, commands.MissingRequiredArgument):
         await ctx.send(f"⚠️ Uso correcto: `{prefijo}hablar <id_canal_o_nombre> <mensaje>`")
 
+
 @bot.command()
 async def ping(ctx):
     await ctx.send("Pong!")
 
+
 ping.help = "responde Pong!"
+
 
 @bot.command()
 async def son(ctx):
@@ -307,17 +333,21 @@ async def repeat(ctx, *, texto: str):
     await ctx.message.delete()
     await ctx.send(f"{texto}")
 
+
 repeat.help = "repite tu mensaje"
+
 
 @bot.command()
 async def senton(ctx):
     randNum = random.randint(1, 20)
-    if(randNum == 20):
+    if randNum == 20:
         await ctx.send("https://tenor.com/drJeVkoSzP2.gif")
     else:
         await ctx.send("https://klipy.com/gifs/ivy-deadlock-10")
 
+
 senton.help = "👀"
+
 
 @bot.command()
 async def deadlock(ctx):
@@ -326,14 +356,15 @@ async def deadlock(ctx):
 
     ping_text = f"<@&{deadlock_senal_id}> \n " if deadlock_senal_id > 0 else ""
 
-    if(deadlock_counter == 5):
+    if deadlock_counter == 5:
         await ctx.send(f"{ping_text}https://tenor.com/bN9ff66l0TL.gif")
-    elif(deadlock_counter == 6):
+    elif deadlock_counter == 6:
         deadlock_counter = 0
         await ctx.send(f"{ping_text}https://tenor.com/jC6vgrbusJc.gif")
     else:
         randGif = random.choice(HOP_ON_DEADLOCK_LIST)
         await ctx.send(f"{ping_text}{randGif}")
+
 
 deadlock.help = "hace la deadlock señal"
 
@@ -346,31 +377,42 @@ async def morite(ctx):
         await ctx.send("https://tenor.com/eVXTx0HR8u.gif")
         await shutdown_bot()
     else:
-        await ctx.send("Necesitas mucho mas que eso para matarme \n https://tenor.com/drJeVkoSzP2.gif")
-        
+        await ctx.send(
+            "Necesitas mucho mas que eso para matarme \n https://tenor.com/drJeVkoSzP2.gif"
+        )
+
 
 morite.help = "no churri no lo hagas :("
 
+
 @bot.command(name="explotar", aliases=["explosion", "boom"])
 async def explotar(ctx):
-    await ctx.send("https://tenor.com/view/ambs---euthyami-deadlock-deadlock-valve-valve-deadlock-ivy-gif-5811381007726499181%22%3EAmbs")
+    await ctx.send(
+        "https://tenor.com/view/ambs---euthyami-deadlock-deadlock-valve-valve-deadlock-ivy-gif-5811381007726499181%22%3EAmbs"
+    )
+
 
 explotar.help = "explota a ivy"
+
 
 @bot.command(name="feet", aliases=["pies", "patas"])
 async def feet(ctx):
     randNum = random.randint(1, 20)
-    if(randNum == 20):
+    if randNum == 20:
         await ctx.send("https://pbs.twimg.com/media/HHnQgiqW4AAxXK0?format=jpg&name=4096x4096")
-    elif (randNum > 1):
+    elif randNum > 1:
         await ctx.message.add_reaction("🤢")
     else:
-        await ctx.send("ew :nauseated_face: \n https://tenor.com/view/mo-and-krill-mo-krill-deadlock-ivy-gif-18413066452038964095")
+        await ctx.send(
+            "ew :nauseated_face: \n https://tenor.com/view/mo-and-krill-mo-krill-deadlock-ivy-gif-18413066452038964095"
+        )
+
 
 feet.help = "🦶?"
 
+
 @bot.command()
-async def gif(ctx, *, tags: str = None) -> str | None:
+async def gif(ctx, *, tags: str | None = None) -> str | None:
     """
     muestra un gif
 
@@ -382,51 +424,54 @@ async def gif(ctx, *, tags: str = None) -> str | None:
     else:
         await ctx.reply("No pude encontrar un gif con esos tags :(")
 
+
 @bot.command(name="kiss", aliases=["besar", "beso"])
 async def kiss(ctx, miembro: discord.Member | None = None):
-        if miembro is None:
-            randNum = random.randint(1, 20)
-            if randNum == 20:
-                await ctx.message.add_reaction("😘")
-            elif randNum > 1:
-                await ctx.send("https://tenor.com/e59gZz1Lj1f.gif")
-            else:
-                await ctx.send("hola, no")
-            return
-
-        if(miembro.id == ctx.author.id):
-            await ctx.send("Vas a... besarte a ti mismo?")
-            return
-        
-        if(miembro == bot.user):
-            randNum = random.randint(1, 20)
-            if(randNum == 20):
-                await ctx.message.add_reaction("😘")
-            elif(randNum > 1):
-                await ctx.send("https://tenor.com/e59gZz1Lj1f.gif")
-            else:
-                await ctx.send("hola, no")
-            return
-
-        emisor = ctx.author.mention
-        mentioned = miembro.mention
-        gif_beso = await obtener_gif(["kiss", "anime"])
-        try:
-            await ctx.message.delete()
-        except discord.Forbidden:
-            pass
-
-        if gif_beso:
-            embed = discord.Embed(
-                description=f"### {emisor} le dio un foking beso a {mentioned}!",
-                color=discord.Color.from_rgb(255, 105, 180)
-            )
-            embed.set_image(url=gif_beso)
-            await ctx.send(content=mentioned, embed=embed)
+    if miembro is None:
+        randNum = random.randint(1, 20)
+        if randNum == 20:
+            await ctx.message.add_reaction("😘")
+        elif randNum > 1:
+            await ctx.send("https://tenor.com/e59gZz1Lj1f.gif")
         else:
-            await ctx.send(f"{emisor} le dio un foking beso a {mentioned}!")
+            await ctx.send("hola, no")
+        return
+
+    if miembro.id == ctx.author.id:
+        await ctx.send("Vas a... besarte a ti mismo?")
+        return
+
+    if miembro == bot.user:
+        randNum = random.randint(1, 20)
+        if randNum == 20:
+            await ctx.message.add_reaction("😘")
+        elif randNum > 1:
+            await ctx.send("https://tenor.com/e59gZz1Lj1f.gif")
+        else:
+            await ctx.send("hola, no")
+        return
+
+    emisor = ctx.author.mention
+    mentioned = miembro.mention
+    gif_beso = await obtener_gif(["kiss", "anime"])
+    try:
+        await ctx.message.delete()
+    except discord.Forbidden:
+        pass
+
+    if gif_beso:
+        embed = discord.Embed(
+            description=f"### {emisor} le dio un foking beso a {mentioned}!",
+            color=discord.Color.from_rgb(255, 105, 180),
+        )
+        embed.set_image(url=gif_beso)
+        await ctx.send(content=mentioned, embed=embed)
+    else:
+        await ctx.send(f"{emisor} le dio un foking beso a {mentioned}!")
+
 
 kiss.help = "le das un beso a alguien"
+
 
 @kiss.error
 async def kiss_error(ctx, error):
@@ -459,17 +504,22 @@ async def paw(ctx, miembro: discord.Member | None = None):
 
     await ctx.send(f"### {emisor} paws at {mentioned}\n{paw_gif}")
 
+
 paw.help = "paws at you"
+
 
 @paw.error
 async def paw_error(ctx, error):
     if isinstance(error, commands.MemberNotFound):
         await ctx.send("No pude encontrar a ese usuario en el servidor.")
 
+
 if __name__ == "__main__":
     if not discord_api_key:
-        print("❌ ERROR: No se encontró la variable DISCORD_TOKEN en el entorno ni en el archivo .env.")
+        print(
+            "❌ ERROR: No se encontró la variable DISCORD_TOKEN en el entorno ni en el archivo .env."
+        )
         print("Crea un archivo .env a partir de .env.example y coloca tu token de Discord.")
-        exit(1)
+        sys.exit(1)
 
     bot.run(discord_api_key)

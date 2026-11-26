@@ -125,7 +125,9 @@ class EconomyEventsMixin:
             max_m = max(min_m, max(EVENT_MIN_INTERVAL_MINUTES, EVENT_MAX_INTERVAL_MINUTES))
             nuevo_intervalo = random.randint(min_m, max_m)
             self.random_events_loop.change_interval(minutes=nuevo_intervalo)
-            self._log.debug("Intervalo de eventos recalculado", extra={"interval_minutes": nuevo_intervalo})
+            self._log.debug(
+                "Intervalo de eventos recalculado", extra={"interval_minutes": nuevo_intervalo}
+            )
         except Exception as e:
             self._log.error("Error al recalcular intervalo de eventos", extra={"error": str(e)})
 
@@ -188,12 +190,21 @@ class EconomyEventsMixin:
         ]
 
         evento_seleccionado = random.choices(eventos, weights=pesos, k=1)[0]
-        self._log.info("Evento aleatorio seleccionado", extra={"event": evento_seleccionado.__name__, "robin_weight": robin_weight, "boost_weight": boost_weight})
+        self._log.info(
+            "Evento aleatorio seleccionado",
+            extra={
+                "event": evento_seleccionado.__name__,
+                "robin_weight": robin_weight,
+                "boost_weight": boost_weight,
+            },
+        )
         try:
             self.active_event = True
             await evento_seleccionado(channel)
         except Exception as e:
-            print(f"[IVY ECONOMY] Error al ejecutar evento aleatorio {evento_seleccionado.__name__}: {e}")
+            print(
+                f"[IVY ECONOMY] Error al ejecutar evento aleatorio {evento_seleccionado.__name__}: {e}"
+            )
         finally:
             self.active_event = False
 
@@ -217,14 +228,14 @@ class EconomyEventsMixin:
                 f"⏳ **Tiempo para agarrarlo:** <t:{deadline}:R>\n\n"
                 f"¡El vecino más rápido en cliquear el botón se queda con todo!"
             ),
-            color=discord.Color.blue()
+            color=discord.Color.blue(),
         )
         embed.set_footer(text="Being a gargoyle means spotting the shinies before anyone else!")
         msg = await channel.send(
             content="@everyone 💎 ¡Cayó un alijo de almas en el callejón de Spanish Harlem!",
             embed=embed,
             view=view,
-            allowed_mentions=discord.AllowedMentions(everyone=True)
+            allowed_mentions=discord.AllowedMentions(everyone=True),
         )
         view.message = msg
 
@@ -241,12 +252,12 @@ class EconomyEventsMixin:
             title="🧠 ¡TRIVIA CALLEJERA DE IVY!",
             description=(
                 f"Ivy se acomodó en la cornisa y les lanza un acertijo al barrio:\n\n"
-                f"**❓ Pregunta:**\n>>> *\"{pregunta}\"*\n\n"
+                f'**❓ Pregunta:**\n>>> *"{pregunta}"*\n\n'
                 f"💰 **Premio para el más despierto:** **+{recompensa:,} {CURRENCY_NAME} {CURRENCY_SYMBOL}**\n"
                 f"⏳ **Tiempo límite:** <t:{deadline}:R>\n"
                 f"📝 *Escribe tu respuesta directamente en este canal.*"
             ),
-            color=discord.Color.purple()
+            color=discord.Color.purple(),
         )
         if pista:
             embed.set_footer(text=f"Pista de Ivy: {pista}")
@@ -256,7 +267,7 @@ class EconomyEventsMixin:
         await channel.send(
             content="@everyone 🧠 ¡Trivia callejera de Ivy en marcha! ¡El primero en acertar se lleva las almas!",
             embed=embed,
-            allowed_mentions=discord.AllowedMentions(everyone=True)
+            allowed_mentions=discord.AllowedMentions(everyone=True),
         )
 
         def check(m: discord.Message) -> bool:
@@ -273,7 +284,10 @@ class EconomyEventsMixin:
                 break
 
             clean_content = msg.content.lower().strip()
-            if any(ans == clean_content or (len(ans) > 3 and ans in clean_content) for ans in respuestas_validas):
+            if any(
+                ans == clean_content or (len(ans) > 3 and ans in clean_content)
+                for ans in respuestas_validas
+            ):
                 winner_msg = msg
                 break
 
@@ -287,14 +301,16 @@ class EconomyEventsMixin:
                 title="🎉 ¡CLAVASTE LA RESPUESTA, CHACHO!",
                 description=(
                     f"¡Exacto! **{winner_msg.author.mention}** fue el más rápido de mente y acertó con:\n"
-                    f"> **\"{winner_msg.content}\"**\n\n"
+                    f'> **"{winner_msg.content}"**\n\n'
                     f"Ivy le arroja **+{recompensa:,} {CURRENCY_NAME} {CURRENCY_SYMBOL}** desde la cornisa.\n"
                     f"Billetera: **{u_data['wallet']:,} {CURRENCY_SYMBOL}**"
                 ),
-                color=discord.Color.green()
+                color=discord.Color.green(),
             )
             embed_win.set_thumbnail(url=winner_msg.author.display_avatar.url)
-            embed_win.set_footer(text="Being quick on your feet is good, but being quick in the head is better!")
+            embed_win.set_footer(
+                text="Being quick on your feet is good, but being quick in the head is better!"
+            )
             await winner_msg.reply(embed=embed_win)
 
             if winner_msg.guild:
@@ -307,7 +323,7 @@ class EconomyEventsMixin:
                     f"Nadie acertó a tiempo, che... Parece que hoy todos tienen cerebro de piedra.\n\n"
                     f"💡 **La respuesta correcta era:** **{correct_display}**"
                 ),
-                color=discord.Color.dark_grey()
+                color=discord.Color.dark_grey(),
             )
             embed_timeout.set_footer(text="Carlos always says: think first, speak second.")
             await channel.send(embed=embed_timeout)
@@ -326,14 +342,16 @@ class EconomyEventsMixin:
                 f"⏳ **Tiempo para derrotarlos:** <t:{deadline}:R>\n\n"
                 f"⚠️ *¡Se necesitan **{RAID_HP} vecinos distintos** golpeando juntos para rodearlos y bajarlos!*"
             ),
-            color=discord.Color.red()
+            color=discord.Color.red(),
         )
-        embed.set_footer(text="Carlos always says: strength in numbers, especially against Mendoza.")
+        embed.set_footer(
+            text="Carlos always says: strength in numbers, especially against Mendoza."
+        )
         msg = await channel.send(
             content="@everyone 🚨 ¡Emboscada del Sindicato Mendoza! ¡A defender el barrio entre todos!",
             embed=embed,
             view=view,
-            allowed_mentions=discord.AllowedMentions(everyone=True)
+            allowed_mentions=discord.AllowedMentions(everyone=True),
         )
         view.message = msg
 
@@ -354,14 +372,14 @@ class EconomyEventsMixin:
                 f"⏳ **Tiempo para aceptar:** <t:{deadline}:R>\n\n"
                 f"¿Quién es el primero en arriesgar el pellejo?"
             ),
-            color=discord.Color.dark_purple()
+            color=discord.Color.dark_purple(),
         )
         embed.set_footer(text="Fortune favors the bold, but the cells are cold!")
         msg = await channel.send(
             content="@everyone 🔥 ¡Ivy lanzó un desafío riesgoso! ¿Quién es el primero en arriesgar el pellejo?",
             embed=embed,
             view=view,
-            allowed_mentions=discord.AllowedMentions(everyone=True)
+            allowed_mentions=discord.AllowedMentions(everyone=True),
         )
         view.message = msg
 
@@ -376,7 +394,7 @@ class EconomyEventsMixin:
                 "El cielo de El Barrio vuelve a despejarse y las rondas de `%work` regresan a su paga habitual.\n"
                 "¡Buen laburo a todos los que salieron a ganarse el pan hoy!"
             ),
-            color=discord.Color.light_grey()
+            color=discord.Color.light_grey(),
         )
         embed_end.set_footer(text="Carlos always says: rest is just as important as the hustle.")
         try:
@@ -399,13 +417,13 @@ class EconomyEventsMixin:
                 f"⏳ **Termina:** <t:{end_ts}:R> (a las <t:{end_ts}:T>)\n\n"
                 f"¡Salgan a patrullar las cornisas y a cuidar el barrio antes de que pare la lluvia!"
             ),
-            color=discord.Color.gold()
+            color=discord.Color.gold(),
         )
         embed.set_footer(text="¡Aprovechen la bonificación antes de que se enfríe el asfalto!")
         await channel.send(
             content=f"@everyone 🌧️✨ ¡Lluvia de almas activa! ¡El comando %work paga x{BOOST_MULTIPLIER:.1f} durante {BOOST_DURATION_MINUTES} minutos!",
             embed=embed,
-            allowed_mentions=discord.AllowedMentions(everyone=True)
+            allowed_mentions=discord.AllowedMentions(everyone=True),
         )
 
         asyncio.create_task(self._boost_end_task(channel, BOOST_DURATION_MINUTES * 60))
@@ -435,13 +453,15 @@ class EconomyEventsMixin:
                         f"pero vio que tiene menos de **{ROBIN_HOOD_MIN_WALLET:,} {CURRENCY_SYMBOL}** de patrimonio total.\n\n"
                         f"¡Esta vez el magnate zafó del impuesto barrial!"
                     ),
-                    color=discord.Color.blue()
+                    color=discord.Color.blue(),
                 )
-                embed_safe.set_footer(text="Ivy solo cobra impuestos a quienes realmente les sobra.")
+                embed_safe.set_footer(
+                    text="Ivy solo cobra impuestos a quienes realmente les sobra."
+                )
                 await channel.send(embed=embed_safe)
                 return
 
-            stolen_amount = int(round(total_wealth * ROBIN_HOOD_STEAL_PERCENTAGE))
+            stolen_amount = round(total_wealth * ROBIN_HOOD_STEAL_PERCENTAGE)
             if stolen_amount <= 0:
                 return
 
@@ -450,7 +470,7 @@ class EconomyEventsMixin:
             stone_charm_used = False
             if richest_inv.get("stone_charm", 0) > 0:
                 richest_inv["stone_charm"] -= 1
-                stolen_amount = max(1, int(round(stolen_amount * 0.5)))
+                stolen_amount = max(1, round(stolen_amount * 0.5))
                 stone_charm_used = True
 
             # Deducir de la billetera primero; si no alcanza, abrir la caja fuerte del banco
@@ -495,20 +515,24 @@ class EconomyEventsMixin:
                 f"⏳ **Tiempo para agarrarla:** <t:{deadline}:R>\n\n"
                 f"¡El primer vecino que cliquee el botón se queda con el botín!"
             ),
-            color=discord.Color.dark_green()
+            color=discord.Color.dark_green(),
         )
-        embed.set_footer(text="Being wealthy is fine, but in El Barrio, everyone eats. ¡Ni la caja del banco se salva!")
+        embed.set_footer(
+            text="Being wealthy is fine, but in El Barrio, everyone eats. ¡Ni la caja del banco se salva!"
+        )
         msg = await channel.send(
             content=f"@everyone 🏹 ¡Robin Hood callejero! ¡Ivy le cobró impuestos a {richest_member.mention} y soltó la bolsa de almas!",
             embed=embed,
             view=view,
-            allowed_mentions=discord.AllowedMentions(everyone=True, users=True)
+            allowed_mentions=discord.AllowedMentions(everyone=True, users=True),
         )
         view.message = msg
 
     # --- Anuncio diario del Más Millonario ---
 
-    async def _trigger_daily_richest_announcement(self, specific_channel: discord.abc.Messageable | None = None, force: bool = False):
+    async def _trigger_daily_richest_announcement(
+        self, specific_channel: discord.abc.Messageable | None = None, force: bool = False
+    ):
         """Publica el reporte diario del Más Millonario en el canal establecido exactamente una vez."""
         if specific_channel:
             guild = getattr(specific_channel, "guild", None)
@@ -528,19 +552,28 @@ class EconomyEventsMixin:
             try:
                 channel = await self.bot.fetch_channel(RICHEST_ANNOUNCE_CHANNEL_ID)
             except Exception as e:
-                print(f"[IVY ECONOMY] No se pudo encontrar el canal de anuncio del más millonario ({RICHEST_ANNOUNCE_CHANNEL_ID}): {e}")
+                print(
+                    f"[IVY ECONOMY] No se pudo encontrar el canal de anuncio del más millonario ({RICHEST_ANNOUNCE_CHANNEL_ID}): {e}"
+                )
                 channel = None
 
         if channel is not None:
             guild = getattr(channel, "guild", None)
             if guild is None and self.bot.guilds:
-                guild = discord.utils.find(lambda g: g.get_channel(channel.id) is not None, self.bot.guilds) or self.bot.guilds[0]
+                guild = (
+                    discord.utils.find(
+                        lambda g: g.get_channel(channel.id) is not None, self.bot.guilds
+                    )
+                    or self.bot.guilds[0]
+                )
 
             if guild is not None:
                 await self._enviar_boletin_millonario(guild, channel)
                 self._last_daily_announcement_date = today_str
 
-    async def _enviar_boletin_millonario(self, guild: discord.Guild, channel: discord.abc.Messageable):
+    async def _enviar_boletin_millonario(
+        self, guild: discord.Guild, channel: discord.abc.Messageable
+    ):
         """Envía el embed diario con la voz de Ivy resumiendo quién es el Más Millonario."""
         role = self._get_richest_role(guild)
         role_name = role.name if role else RICHEST_ROLE_NAME
@@ -579,7 +612,7 @@ class EconomyEventsMixin:
         embed = discord.Embed(
             title=f"👑 ¡EL MAGNATE DEL DÍA: {role_name.upper()}!",
             description=desc,
-            color=discord.Color.gold()
+            color=discord.Color.gold(),
         )
         embed.set_thumbnail(url=best_member.display_avatar.url)
         embed.set_footer(text="Carlos always says: the higher you climb, the harder the fall.")
@@ -588,10 +621,12 @@ class EconomyEventsMixin:
             await channel.send(
                 content=f"📢 ¡Edición Diaria de Spanish Harlem! El magnate de hoy es {best_member.mention}.",
                 embed=embed,
-                allowed_mentions=discord.AllowedMentions(users=True)
+                allowed_mentions=discord.AllowedMentions(users=True),
             )
         except (discord.Forbidden, discord.HTTPException) as e:
-            print(f"[IVY ECONOMY] No se pudo enviar el anuncio diario de millonario en {channel}: {e}")
+            print(
+                f"[IVY ECONOMY] No se pudo enviar el anuncio diario de millonario en {channel}: {e}"
+            )
 
     # --- Comando de prueba para Owners ---
 
@@ -610,7 +645,10 @@ class EconomyEventsMixin:
                         break
             if channel is None and self.bot.guilds:
                 guild = self.bot.guilds[0]
-                channel = guild.system_channel or next((c for c in guild.text_channels if c.permissions_for(guild.me).send_messages), None)
+                channel = guild.system_channel or next(
+                    (c for c in guild.text_channels if c.permissions_for(guild.me).send_messages),
+                    None,
+                )
 
         if not channel:
             return
@@ -619,20 +657,27 @@ class EconomyEventsMixin:
 
         if hubo_ganador and winner_member:
             quote = random.choice(IVY_LOTTERY_WIN_QUOTES).format(
-                jackpot=jackpot,
-                currency=CURRENCY_SYMBOL,
-                winner_mention=winner_member.mention
+                jackpot=jackpot, currency=CURRENCY_SYMBOL, winner_mention=winner_member.mention
             )
             embed = discord.Embed(
                 title="🎰 ¡¡TENEMOS GANADOR DEL GRAN POZO COMUNITARIO!!",
                 description=quote,
-                color=discord.Color.gold()
+                color=discord.Color.gold(),
             )
             embed.set_thumbnail(url=winner_member.display_avatar.url)
-            embed.add_field(name="💰 Premio Acreditado", value=f"**{jackpot:,} {CURRENCY_SYMBOL}**", inline=True)
-            embed.add_field(name="🎟️ Total de Tickets en Juego", value=f"**{total_tickets}**", inline=True)
-            embed.set_footer(text="El pozo se ha reiniciado con el fondo base municipal. ¡Ya podés comprar tickets para el próximo sorteo con '%ticket'!")
-            await channel.send(content=f"@everyone 🎉 ¡El bolillero de Spanish Harlem tiene ganador! {winner_member.mention} se llevó el pozo!", embed=embed)
+            embed.add_field(
+                name="💰 Premio Acreditado", value=f"**{jackpot:,} {CURRENCY_SYMBOL}**", inline=True
+            )
+            embed.add_field(
+                name="🎟️ Total de Tickets en Juego", value=f"**{total_tickets}**", inline=True
+            )
+            embed.set_footer(
+                text="El pozo se ha reiniciado con el fondo base municipal. ¡Ya podés comprar tickets para el próximo sorteo con '%ticket'!"
+            )
+            await channel.send(
+                content=f"@everyone 🎉 ¡El bolillero de Spanish Harlem tiene ganador! {winner_member.mention} se llevó el pozo!",
+                embed=embed,
+            )
         else:
             embed = discord.Embed(
                 title="🎰 Sorteo del Gran Pozo del Barrio",
@@ -641,9 +686,11 @@ class EconomyEventsMixin:
                     f"💰 El pozo de **{jackpot:,} {CURRENCY_SYMBOL}** queda acumulado para el próximo sorteo.\n"
                     f"¡Asegurá tus boletos con `%ticket <cantidad>`!"
                 ),
-                color=discord.Color.blue()
+                color=discord.Color.blue(),
             )
-            embed.set_footer(text="Carlos always says: la oportunidad favorece a la mente preparada (y al que compra el ticket).")
+            embed.set_footer(
+                text="Carlos always says: la oportunidad favorece a la mente preparada (y al que compra el ticket)."
+            )
             await channel.send(embed=embed)
 
     @commands.command(name="eventtest", hidden=True)

@@ -311,9 +311,13 @@ class ShopView(discord.ui.View):
                     f"{item.emoji} **{item.name}** — **{item.price:,} {CURRENCY_SYMBOL}** {tipo_str}{owned_str}\n"
                     f"↳ *{item.description}*"
                 )
-            embed.add_field(name=f"📦 Categoría: {cat_name}", value="\n\n".join(lineas), inline=False)
+            embed.add_field(
+                name=f"📦 Categoría: {cat_name}", value="\n\n".join(lineas), inline=False
+            )
 
-        embed.set_footer(text="Carlos always says: un buen artilugio a tiempo vale más que cien mil almas.")
+        embed.set_footer(
+            text="Carlos always says: un buen artilugio a tiempo vale más que cien mil almas."
+        )
         return embed
 
 
@@ -341,21 +345,29 @@ class InventoryView(discord.ui.View):
         coffee_until = buffs.get("coffee_until", 0.0)
         if coffee_until > now:
             rem = int(coffee_until - now)
-            buff_lines.append(f"☕ **Café de Carlos Activo:** Cooldown de `%work` a 15s (Resta: **{format_remaining_time(rem)}**)")
+            buff_lines.append(
+                f"☕ **Café de Carlos Activo:** Cooldown de `%work` a 15s (Resta: **{format_remaining_time(rem)}**)"
+            )
 
         kudzu_until = buffs.get("kudzu_until", 0.0)
         if kudzu_until > now:
             rem = int(kudzu_until - now)
-            buff_lines.append(f"🌿 **Bendición de Kudzu Activa:** +50% almas en Soul Drops (Resta: **{format_remaining_time(rem)}**)")
+            buff_lines.append(
+                f"🌿 **Bendición de Kudzu Activa:** +50% almas en Soul Drops (Resta: **{format_remaining_time(rem)}**)"
+            )
 
         last_paradox = user_data.get("last_paradox_rewind", 0.0)
         paradox_in_cd = (now - last_paradox) < PARADOX_COOLDOWN_SECONDS
         if paradox_in_cd:
             rem = int(PARADOX_COOLDOWN_SECONDS - (now - last_paradox))
-            buff_lines.append(f"⏳ **Sobrecarga de Paradox:** El cronómetro se está recalibrando (Disponible en: **{format_remaining_time(rem)}**)")
+            buff_lines.append(
+                f"⏳ **Sobrecarga de Paradox:** El cronómetro se está recalibrando (Disponible en: **{format_remaining_time(rem)}**)"
+            )
 
         if buff_lines:
-            embed.add_field(name="⚡ Efectos Temporales Activos", value="\n".join(buff_lines), inline=False)
+            embed.add_field(
+                name="⚡ Efectos Temporales Activos", value="\n".join(buff_lines), inline=False
+            )
 
         # 2. Ítems en inventario
         item_lines = []
@@ -368,11 +380,19 @@ class InventoryView(discord.ui.View):
                     rem = int(PARADOX_COOLDOWN_SECONDS - (now - last_paradox))
                     usar_hint = f" — *(En enfriamiento: listo en {format_remaining_time(rem)})*"
                 else:
-                    usar_hint = " — *(Escribe `%usar " + item.item_id + "`)*" if item.usable else " — *(Se activa solo cuando haga falta)*"
-                item_lines.append(f"{item.emoji} **{item.name}** x{count}{usar_hint}\n↳ *{item.description}*")
+                    usar_hint = (
+                        " — *(Escribe `%usar " + item.item_id + "`)*"
+                        if item.usable
+                        else " — *(Se activa solo cuando haga falta)*"
+                    )
+                item_lines.append(
+                    f"{item.emoji} **{item.name}** x{count}{usar_hint}\n↳ *{item.description}*"
+                )
 
         if item_lines:
-            embed.add_field(name="📦 Artículos en tu Posesión", value="\n\n".join(item_lines), inline=False)
+            embed.add_field(
+                name="📦 Artículos en tu Posesión", value="\n\n".join(item_lines), inline=False
+            )
         else:
             embed.add_field(
                 name="📦 Artículos en tu Posesión",
@@ -382,5 +402,7 @@ class InventoryView(discord.ui.View):
 
         wallet = user_data.get("wallet", 0)
         bank = user_data.get("bank", 0)
-        embed.set_footer(text=f"Bolsillo: {wallet:,} {CURRENCY_SYMBOL} | Cornisa: {bank:,} {CURRENCY_SYMBOL} • Ivy te cuida la espalda.")
+        embed.set_footer(
+            text=f"Bolsillo: {wallet:,} {CURRENCY_SYMBOL} | Cornisa: {bank:,} {CURRENCY_SYMBOL} • Ivy te cuida la espalda."
+        )
         return embed

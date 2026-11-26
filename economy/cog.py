@@ -138,7 +138,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             "q": q,
             "limit": 10,
             "offset": random_offset,
-            "rating": "r"
+            "rating": "r",
         }
 
         try:
@@ -150,8 +150,10 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                         if resultados:
                             elegido = random.choice(resultados)
                             return elegido["images"]["original"]["url"]
-        except Exception as e:
-            self._log.warning("Error al conectar con Giphy para duelo", extra={"error": str(e), "tags": tags})
+        except (aiohttp.ClientError, TimeoutError) as e:
+            self._log.warning(
+                "Error al conectar con Giphy para duelo", extra={"error": str(e), "tags": tags}
+            )
 
         return None
 
@@ -182,7 +184,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         """
         amount_str = amount_str.strip().lower()
         if amount_str in ("all", "todo", "max"):
-            return int(round(current_balance))
+            return current_balance
         elif amount_str in ("half", "mitad", "medio", "med", "1/2"):
             half_val = int(current_balance // 2)
             if half_val <= 0:
@@ -219,16 +221,13 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             return
         roles_attr = getattr(member, "_roles", None)
         if roles_attr is not None:
-            try:
-                if hasattr(roles_attr, "remove"):
-                    try:
-                        roles_attr.remove(role_id)
-                    except (ValueError, KeyError):
-                        pass
-                elif hasattr(roles_attr, "discard"):
-                    roles_attr.discard(role_id)
-            except Exception:
-                pass
+            if hasattr(roles_attr, "remove"):
+                try:
+                    roles_attr.remove(role_id)
+                except (ValueError, KeyError):
+                    pass
+            elif hasattr(roles_attr, "discard"):
+                roles_attr.discard(role_id)
 
     @staticmethod
     def _safe_add_cached_role(member: discord.Member | None, role_id: int):
@@ -236,19 +235,18 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             return
         roles_attr = getattr(member, "_roles", None)
         if roles_attr is not None:
-            try:
-                if hasattr(roles_attr, "has") and hasattr(roles_attr, "add"):
-                    if not roles_attr.has(role_id):
-                        roles_attr.add(role_id)
-                elif hasattr(roles_attr, "add"):
+            if hasattr(roles_attr, "has") and hasattr(roles_attr, "add"):
+                if not roles_attr.has(role_id):
                     roles_attr.add(role_id)
-                elif hasattr(roles_attr, "append"):
-                    if role_id not in roles_attr:
-                        roles_attr.append(role_id)
-            except Exception:
-                pass
+            elif hasattr(roles_attr, "add"):
+                roles_attr.add(role_id)
+            elif hasattr(roles_attr, "append"):
+                if role_id not in roles_attr:
+                    roles_attr.append(role_id)
 
-    async def _get_top_wealthy_member(self, guild: discord.Guild | None) -> tuple[discord.Member | None, int]:
+    async def _get_top_wealthy_member(
+        self, guild: discord.Guild | None
+    ) -> tuple[discord.Member | None, int]:
         """Encuentra al miembro no-bot con mayor fortuna total (wallet + bank) dentro del servidor de forma optimizada."""
         if guild is None:
             return None, 0
@@ -295,11 +293,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         return None, 0
 
     def _evaluar_riesgo_apostador(
-        self,
-        user_id: int,
-        bet_amount: int,
-        user_total: int,
-        guild: discord.Guild | None
+        self, user_id: int, bet_amount: int, user_total: int, guild: discord.Guild | None
     ) -> tuple[bool, bool, int]:
         """
         Evalua en memoria (0 llamadas de red) si una apuesta resetea el reloj de inactividad
@@ -310,21 +304,18 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         if guild is None:
             return False, True, 0
 
-        cached_leader_id, cached_wealth = self._top_leader_cache.get(guild.id, (0, 0))
-        is_richest = (cached_leader_id == user_id and user_total > 0)
+        cached_leader_id, _cached_wealth = self._top_leader_cache.get(guild.id, (0, 0))
+        is_richest = cached_leader_id == user_id and user_total > 0
 
         if not is_richest:
             return False, True, 0
 
-        required_bet = max(MIN_RISK_BET_FLOOR, int(round(user_total * MIN_RISK_BET_PERCENT)))
-        is_valid = (bet_amount >= required_bet)
+        required_bet = max(MIN_RISK_BET_FLOOR, round(user_total * MIN_RISK_BET_PERCENT))
+        is_valid = bet_amount >= required_bet
         return True, is_valid, required_bet
 
     async def _registrar_actividad_riesgo(
-        self,
-        user_id: int,
-        bet_amount: int,
-        guild: discord.Guild | None
+        self, user_id: int, bet_amount: int, guild: discord.Guild | None
     ) -> tuple[bool, bool, int]:
         """
         Registra la actividad de apuesta para el usuario.
@@ -343,9 +334,9 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             cached_leader_id, cached_wealth = self._top_leader_cache.get(guild.id, (0, 0))
             if cached_leader_id != user_id and user_total > cached_wealth and user_total > 0:
                 top_member, top_total = await self._get_top_wealthy_member(guild)
-                is_richest = (top_member is not None and top_member.id == user_id and top_total > 0)
+                is_richest = top_member is not None and top_member.id == user_id and top_total > 0
             else:
-                is_richest = (cached_leader_id == user_id and user_total > 0)
+                is_richest = cached_leader_id == user_id and user_total > 0
 
             if not is_richest:
                 user_data["last_gamble"] = time.time()
@@ -353,7 +344,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 return False, True, 0
 
             # Es el Mas Millonario: calcular la apuesta minima requerida (Skin in the game)
-            required_bet = max(MIN_RISK_BET_FLOOR, int(round(user_total * MIN_RISK_BET_PERCENT)))
+            required_bet = max(MIN_RISK_BET_FLOOR, round(user_total * MIN_RISK_BET_PERCENT))
 
             if bet_amount >= required_bet:
                 user_data["last_gamble"] = time.time()
@@ -363,9 +354,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 return True, False, required_bet
 
     async def actualizar_rol_millonario(
-        self,
-        guild: discord.Guild | None,
-        announce_channel: discord.abc.Messageable | None = None
+        self, guild: discord.Guild | None, announce_channel: discord.abc.Messageable | None = None
     ) -> discord.Member | None:
         """
         Determina automáticamente quién es el usuario con más patrimonio total (mano + banco)
@@ -396,20 +385,19 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             return best_member
 
         # 4. Remover el rol de cualquier portador anterior
-        previous_leader = None
         for old_member in current_holders:
             if old_member.id != best_member.id:
-                previous_leader = old_member
                 try:
                     await old_member.remove_roles(
-                        role,
-                        reason="Perdió el puesto del Más Millonario de Spanish Harlem."
+                        role, reason="Perdió el puesto del Más Millonario de Spanish Harlem."
                     )
                     cached_old = guild.get_member(old_member.id)
                     self._safe_remove_cached_role(cached_old, role.id)
                     self._safe_remove_cached_role(old_member, role.id)
                 except discord.Forbidden:
-                    print(f"[IVY ECONOMY] Sin permisos para remover el rol '{role.name}' a {old_member.display_name}. Verifica la jerarquía de roles.")
+                    print(
+                        f"[IVY ECONOMY] Sin permisos para remover el rol '{role.name}' a {old_member.display_name}. Verifica la jerarquía de roles."
+                    )
                 except discord.HTTPException as e:
                     print(f"[IVY ECONOMY] Error de Discord al remover rol: {e}")
 
@@ -417,8 +405,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         if role not in best_member.roles:
             try:
                 await best_member.add_roles(
-                    role,
-                    reason="Nuevo Top 1 de la economía (El Más Millonario)."
+                    role, reason="Nuevo Top 1 de la economía (El Más Millonario)."
                 )
                 cached_best = guild.get_member(best_member.id)
                 self._safe_add_cached_role(cached_best, role.id)
@@ -430,14 +417,15 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                     new_leader_data["last_gamble"] = time.time()
                     await self.db.save()
             except discord.Forbidden:
-                print(f"[IVY ECONOMY] Sin permisos de jerarquía para asignar el rol '{role.name}' a {best_member.display_name}. Coloca el rol del bot por encima de '{role.name}'.")
+                print(
+                    f"[IVY ECONOMY] Sin permisos de jerarquía para asignar el rol '{role.name}' a {best_member.display_name}. Coloca el rol del bot por encima de '{role.name}'."
+                )
                 return best_member
             except discord.HTTPException as e:
                 print(f"[IVY ECONOMY] Error de Discord al asignar rol: {e}")
                 return best_member
 
         return best_member
-
 
     async def execute_temporal_rewind(self, user_id: int) -> tuple[bool, Any]:
         """Ejecuta el rebobinado de una tirada fallida usando el Cronómetro de Paradox."""
@@ -494,7 +482,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         return True, {
             "amount": lost_amount,
             "game": last_loss.get("game", "apuesta"),
-            "wallet": user_data["wallet"]
+            "wallet": user_data["wallet"],
         }
 
     # --------------------------------------------------------------------------
@@ -514,7 +502,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         """Compra un artículo directamente de la tienda por su nombre o alias."""
         item = get_item(item_query)
         if not item:
-            valid_items = ", ".join([f"`{k}`" for k in CATALOG.keys()])
+            valid_items = ", ".join([f"`{k}`" for k in CATALOG])
             await ctx.reply(
                 f"❌ No encontré ningún artículo llamado `{item_query}` en el mercado de Ivy.\n"
                 f"Artículos disponibles: {valid_items}. Usá `%tienda` para verlos con detalle."
@@ -552,9 +540,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             await self.db.save()
 
         quote = random.choice(IVY_SHOP_BUY_QUOTES).format(
-            item_name=f"{item.emoji} {item.name}",
-            price=total_price,
-            currency=CURRENCY_SYMBOL
+            item_name=f"{item.emoji} {item.name}", price=total_price, currency=CURRENCY_SYMBOL
         )
         embed = discord.Embed(
             title="🛒 ¡Compra Realizada con Éxito!",
@@ -564,7 +550,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 f"💵 **Almas restantes en mano:** {user_data['wallet']:,} {CURRENCY_SYMBOL}\n\n"
                 f"💡 *Revisa tus cosas con `{ctx.prefix}inv` o actívalas con `{ctx.prefix}usar <item>`.*"
             ),
-            color=discord.Color.teal()
+            color=discord.Color.teal(),
         )
         await ctx.reply(embed=embed)
 
@@ -600,8 +586,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 return
 
             quote = random.choice(IVY_PARADOX_REWIND_QUOTES).format(
-                amount=result["amount"],
-                currency=CURRENCY_SYMBOL
+                amount=result["amount"], currency=CURRENCY_SYMBOL
             )
             embed = discord.Embed(
                 title="⏳ ¡PARADOJA TEMPORAL: LÍNEA DE TIEMPO REBOBINADA!",
@@ -610,9 +595,11 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                     f"🎲 **Tirada revertida:** {result['game']}\n"
                     f"💵 **Almas actuales en mano:** **{result['wallet']:,} {CURRENCY_SYMBOL}**"
                 ),
-                color=discord.Color.purple()
+                color=discord.Color.purple(),
             )
-            embed.set_footer(text="El Cronómetro de Paradox se ha consumido en la fractura temporal.")
+            embed.set_footer(
+                text="El Cronómetro de Paradox se ha consumido en la fractura temporal."
+            )
             await ctx.reply(embed=embed)
             return
 
@@ -624,7 +611,9 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             count = inv.get(item.item_id, 0)
 
             if count <= 0:
-                await ctx.reply(f"❌ No tienes ningún **{item.name}** en tu mochila. Compralo en la `%tienda`.")
+                await ctx.reply(
+                    f"❌ No tienes ningún **{item.name}** en tu mochila. Compralo en la `%tienda`."
+                )
                 return
 
             if item.item_id == "carlos_coffee":
@@ -680,9 +669,11 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                         f"> *«{broadcast_msg}»*\n\n"
                         f"*(Mensaje transmitido a todo Spanish Harlem)*"
                     ),
-                    color=discord.Color.gold()
+                    color=discord.Color.gold(),
                 )
-                embed.set_footer(text=f"Anuncio emitido por {ctx.author.display_name} • Ivy Amplification System")
+                embed.set_footer(
+                    text=f"Anuncio emitido por {ctx.author.display_name} • Ivy Amplification System"
+                )
                 await ctx.send(content="@everyone 📢 ¡Atención al boletín de cornisa!", embed=embed)
                 return
 
@@ -695,8 +686,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             return
 
         quote = random.choice(IVY_PARADOX_REWIND_QUOTES).format(
-            amount=result["amount"],
-            currency=CURRENCY_SYMBOL
+            amount=result["amount"], currency=CURRENCY_SYMBOL
         )
         embed = discord.Embed(
             title="⏳ ¡PARADOJA TEMPORAL: LÍNEA DE TIEMPO REBOBINADA!",
@@ -705,7 +695,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 f"🎲 **Tirada revertida:** {result['game']}\n"
                 f"💵 **Almas actuales en mano:** **{result['wallet']:,} {CURRENCY_SYMBOL}**"
             ),
-            color=discord.Color.purple()
+            color=discord.Color.purple(),
         )
         embed.set_footer(text="El Cronómetro de Paradox se ha consumido en la fractura temporal.")
         await ctx.reply(embed=embed)
@@ -736,9 +726,13 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             qty = min(available_quota, max_by_wallet)
             if qty <= 0:
                 if available_quota <= 0:
-                    await ctx.reply(f"❌ Ya tienes el máximo de **{LOTTERY_MAX_TICKETS_PER_USER} tickets** permitidos por sorteo.")
+                    await ctx.reply(
+                        f"❌ Ya tienes el máximo de **{LOTTERY_MAX_TICKETS_PER_USER} tickets** permitidos por sorteo."
+                    )
                 else:
-                    await ctx.reply(f"❌ No te alcanza ni para 1 ticket ({LOTTERY_TICKET_PRICE:,} {CURRENCY_SYMBOL}).")
+                    await ctx.reply(
+                        f"❌ No te alcanza ni para 1 ticket ({LOTTERY_TICKET_PRICE:,} {CURRENCY_SYMBOL})."
+                    )
                 return
         else:
             try:
@@ -747,7 +741,9 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 await ctx.reply("❌ Ingresa un número válido de tickets o `max`.")
                 return
 
-        success, msg, total_user, current_jackpot = await self.lottery.buy_tickets(ctx.author.id, qty)
+        success, msg, total_user, current_jackpot = await self.lottery.buy_tickets(
+            ctx.author.id, qty
+        )
         if not success:
             await ctx.reply(msg)
             return
@@ -760,7 +756,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 f"💰 **Pozo Acumulado:** **{current_jackpot:,} {CURRENCY_SYMBOL}**\n\n"
                 f"💡 *Revisa las probabilidades de todos los vecinos con `{ctx.prefix}loteria`.*"
             ),
-            color=discord.Color.gold()
+            color=discord.Color.gold(),
         )
         await ctx.reply(embed=embed)
 
@@ -813,11 +809,11 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 time_str = self._format_time(remaining_prison)
                 quote = random.choice(IVY_PRISON_WARNING_QUOTES).format(time=time_str)
                 embed = discord.Embed(
-                    title="🚨 ¡Estás en Cana, Chacho!",
-                    description=quote,
-                    color=discord.Color.red()
+                    title="🚨 ¡Estás en Cana, Chacho!", description=quote, color=discord.Color.red()
                 )
-                embed.set_footer(text="Ivy no deja salir a los rateros hasta que cumplan la condena.")
+                embed.set_footer(
+                    text="Ivy no deja salir a los rateros hasta que cumplan la condena."
+                )
                 await ctx.reply(embed=embed)
                 return
 
@@ -835,16 +831,18 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 embed = discord.Embed(
                     title="🪨 Modo Estatua / Stone Form Activo",
                     description=quote,
-                    color=discord.Color.light_grey()
+                    color=discord.Color.light_grey(),
                 )
-                embed.set_footer(text="Being a statue isn't riveting, but it beats being exhausted!")
+                embed.set_footer(
+                    text="Being a statue isn't riveting, but it beats being exhausted!"
+                )
                 await ctx.reply(embed=embed)
                 return
 
             # 3. Asignación de Recompensa
             base_reward = random.randint(WORK_MIN_REWARD, WORK_MAX_REWARD)
             is_boosted = self.work_boost_active and (now < self.work_boost_until)
-            reward = int(round(base_reward * BOOST_MULTIPLIER)) if is_boosted else base_reward
+            reward = round(base_reward * BOOST_MULTIPLIER) if is_boosted else base_reward
 
             user["wallet"] += reward
             user["last_work"] = now
@@ -863,7 +861,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         embed = discord.Embed(
             title="✨ ¡Ronda Completada por Spanish Harlem!",
             description=desc,
-            color=discord.Color.green()
+            color=discord.Color.green(),
         )
         if is_coffee:
             footer_text = f"Ivy te espera para la próxima ronda en {COFFEE_WORK_COOLDOWN} segundos. (☕ ¡Café de Carlos activo!)"
@@ -886,15 +884,15 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
 
     def _get_source_info(self, source):
         """Extrae info común de Interaction o Context."""
-        if hasattr(source, 'user'):  # Interaction
+        if hasattr(source, "user"):  # Interaction
             return source.user.id, source.user, source.guild, source.channel
         else:  # Context
             return source.author.id, source.author, source.guild, source.channel
 
     async def _send_response(self, source, embed, view=None, ephemeral=False):
         """Envía respuesta compatible con Interaction y Context."""
-        if hasattr(source, 'response'):  # Interaction
-            if hasattr(source.response, 'is_done') and source.response.is_done():
+        if hasattr(source, "response"):  # Interaction
+            if hasattr(source.response, "is_done") and source.response.is_done():
                 await source.followup.send(embed=embed, view=view, ephemeral=ephemeral)
             else:
                 await source.response.send_message(embed=embed, view=view, ephemeral=ephemeral)
@@ -906,11 +904,11 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
 
     async def _bal_impl(self, source, target: discord.User):
         """Implementación compartida para /bal y %bal."""
-        user_id, author, guild, channel = self._get_source_info(source)
+        _user_id, _author, guild, _channel = self._get_source_info(source)
         member = target
         if guild:
             member = guild.get_member(target.id) or target
-        
+
         async with self.db.lock:
             user = await self.db.get_user_data(target.id)
             wallet = user["wallet"]
@@ -921,28 +919,42 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         embed = discord.Embed(
             title=f"💳 Balance de {member.display_name}",
             description="Revisando el registro de almas en los archivos de Spanish Harlem.",
-            color=discord.Color.blue()
+            color=discord.Color.blue(),
         )
         embed.set_thumbnail(url=member.display_avatar.url)
-        embed.add_field(name="💵 En Mano (Bolsillos)", value=f"**{wallet:,}** {CURRENCY_SYMBOL}", inline=True)
-        embed.add_field(name="🪨 En la Cornisa (Banco)", value=f"**{bank_bal:,}** {CURRENCY_SYMBOL}", inline=True)
-        embed.add_field(name="💰 Patrimonio Neto", value=f"**{total:,}** {CURRENCY_NAME} {CURRENCY_SYMBOL}", inline=False)
+        embed.add_field(
+            name="💵 En Mano (Bolsillos)", value=f"**{wallet:,}** {CURRENCY_SYMBOL}", inline=True
+        )
+        embed.add_field(
+            name="🪨 En la Cornisa (Banco)",
+            value=f"**{bank_bal:,}** {CURRENCY_SYMBOL}",
+            inline=True,
+        )
+        embed.add_field(
+            name="💰 Patrimonio Neto",
+            value=f"**{total:,}** {CURRENCY_NAME} {CURRENCY_SYMBOL}",
+            inline=False,
+        )
 
         if in_prison:
             embed.add_field(
                 name="🚨 Estado Penal",
                 value=f"⛓️ **EN EL CALABOZO** (le restan {self._format_time(rem)} de condena)",
-                inline=False
+                inline=False,
             )
         else:
-            embed.add_field(name="🕊️ Estado Legal", value="Ciudadano libre y sin causas pendientes.", inline=False)
+            embed.add_field(
+                name="🕊️ Estado Legal",
+                value="Ciudadano libre y sin causas pendientes.",
+                inline=False,
+            )
 
         embed.set_footer(text="Helping people's what I do.")
         await self._send_response(source, embed)
 
     async def _work_impl(self, source):
         """Implementación compartida para /work y %work."""
-        user_id, author, guild, channel = self._get_source_info(source)
+        user_id, _author, guild, channel = self._get_source_info(source)
 
         async with self.db.lock:
             user = await self.db.get_user_data(user_id)
@@ -954,11 +966,11 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 time_str = self._format_time(remaining_prison)
                 quote = random.choice(IVY_PRISON_WARNING_QUOTES).format(time=time_str)
                 embed = discord.Embed(
-                    title="🚨 ¡Estás en Cana, Chacho!",
-                    description=quote,
-                    color=discord.Color.red()
+                    title="🚨 ¡Estás en Cana, Chacho!", description=quote, color=discord.Color.red()
                 )
-                embed.set_footer(text="Ivy no deja salir a los rateros hasta que cumplan la condena.")
+                embed.set_footer(
+                    text="Ivy no deja salir a los rateros hasta que cumplan la condena."
+                )
                 await self._send_response(source, embed)
                 return
 
@@ -976,16 +988,18 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 embed = discord.Embed(
                     title="🪨 Modo Estatua / Stone Form Activo",
                     description=quote,
-                    color=discord.Color.light_grey()
+                    color=discord.Color.light_grey(),
                 )
-                embed.set_footer(text="Being a statue isn't riveting, but it beats being exhausted!")
+                embed.set_footer(
+                    text="Being a statue isn't riveting, but it beats being exhausted!"
+                )
                 await self._send_response(source, embed)
                 return
 
             # 3. Asignación de Recompensa
             base_reward = random.randint(WORK_MIN_REWARD, WORK_MAX_REWARD)
             is_boosted = self.work_boost_active and (now < self.work_boost_until)
-            reward = int(round(base_reward * BOOST_MULTIPLIER)) if is_boosted else base_reward
+            reward = round(base_reward * BOOST_MULTIPLIER) if is_boosted else base_reward
 
             user["wallet"] += reward
             user["last_work"] = now
@@ -1004,7 +1018,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         embed = discord.Embed(
             title="✨ ¡Ronda Completada por Spanish Harlem!",
             description=desc,
-            color=discord.Color.green()
+            color=discord.Color.green(),
         )
         if is_coffee:
             footer_text = f"Ivy te espera para la próxima ronda en {COFFEE_WORK_COOLDOWN} segundos. (☕ ¡Café de Carlos activo!)"
@@ -1017,7 +1031,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             leader_id, leader_wealth = self._top_leader_cache.get(guild.id, (0, 0))
             user_total = user["wallet"] + user["bank"]
             if user_id == leader_id or user_total >= leader_wealth:
-                await self.actualizar_rol_millonario(interaction.guild, announce_channel=interaction.channel)
+                await self.actualizar_rol_millonario(guild, announce_channel=channel)
 
     # --------------------------------------------------------------------------
     #                    SLASH COMMAND IMPLEMENTATIONS (CONTINUED)
@@ -1025,20 +1039,26 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
 
     async def _coin_impl(self, source, eleccion: str, monto: str):
         """Implementación compartida para /coin y %coin."""
-        user_id, author, guild, channel = self._get_source_info(source)
-        
+        user_id, _author, guild, channel = self._get_source_info(source)
+
         eleccion_clean = eleccion.lower().strip()
         alias_map = {
-            "cara": "cara", "c": "cara", "heads": "cara", "h": "cara",
-            "cruz": "cruz", "x": "cruz", "tails": "cruz", "t": "cruz"
+            "cara": "cara",
+            "c": "cara",
+            "heads": "cara",
+            "h": "cara",
+            "cruz": "cruz",
+            "x": "cruz",
+            "tails": "cruz",
+            "t": "cruz",
         }
 
         if eleccion_clean not in alias_map:
             embed = discord.Embed(
                 title="❌ Elección Inválida",
                 description=f"¡Ey, chacho! Tienes que elegir **cara** o **cruz**.\n"
-                           f"*Ejemplo:* `{channel and channel.name or '%'}coin cara 50`",
-                color=discord.Color.red()
+                f"*Ejemplo:* `{channel and channel.name or '%'}coin cara 50`",
+                color=discord.Color.red(),
             )
             await self._send_response(source, embed)
             return
@@ -1055,7 +1075,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 embed = discord.Embed(
                     title="❌ Monto Inválido",
                     description="Pon un monto válido en números positivos o usa `all` si tienes agallas de gárgola.",
-                    color=discord.Color.red()
+                    color=discord.Color.red(),
                 )
                 await self._send_response(source, embed)
                 return
@@ -1064,7 +1084,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 embed = discord.Embed(
                     title="❌ Fondos Insuficientes",
                     description=f"¡Te falta plata en los bolsillos, chacho! Solo tienes **{wallet:,} {CURRENCY_SYMBOL}** en mano.",
-                    color=discord.Color.red()
+                    color=discord.Color.red(),
                 )
                 await self._send_response(source, embed)
                 return
@@ -1081,9 +1101,9 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 embed = discord.Embed(
                     title=f"🪙 ¡Moneda al Aire: Salió {resultado.upper()}!",
                     description=f"{quote}\n\n"
-                                f"🎉 **Ganancia neta:** +{ganancia:,} {CURRENCY_SYMBOL}\n"
-                                f"💵 **Billetera actual:** {user['wallet']:,} {CURRENCY_SYMBOL}",
-                    color=discord.Color.green()
+                    f"🎉 **Ganancia neta:** +{ganancia:,} {CURRENCY_SYMBOL}\n"
+                    f"💵 **Billetera actual:** {user['wallet']:,} {CURRENCY_SYMBOL}",
+                    color=discord.Color.green(),
                 )
                 embed.set_footer(text="Who says vigilante work doesn't pay the bills?")
             else:
@@ -1103,9 +1123,9 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 embed = discord.Embed(
                     title=f"🪙 Moneda al Aire: Salió {resultado.upper()}",
                     description=f"{quote}\n\n"
-                                f"💸 **Pérdida:** -{parsed_amount:,} {CURRENCY_SYMBOL}\n"
-                                f"💵 **Te quedaron:** {user['wallet']:,} {CURRENCY_SYMBOL}",
-                    color=discord.Color.red()
+                    f"💸 **Pérdida:** -{parsed_amount:,} {CURRENCY_SYMBOL}\n"
+                    f"💵 **Te quedaron:** {user['wallet']:,} {CURRENCY_SYMBOL}",
+                    color=discord.Color.red(),
                 )
                 embed.set_footer(text="I always get a little nervous before taking big risks...")
 
@@ -1131,7 +1151,9 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 user = await self.db.get_user_data(user_id)
                 inv = user.get("inventory", {})
                 last_rewind = user.get("last_paradox_rewind", 0.0)
-                if inv.get("paradox_chrono", 0) > 0 and (now - last_rewind >= PARADOX_COOLDOWN_SECONDS):
+                if inv.get("paradox_chrono", 0) > 0 and (
+                    now - last_rewind >= PARADOX_COOLDOWN_SECONDS
+                ):
                     view = RewindView(self, user_id, parsed_amount)
 
         await self._send_response(source, embed, view=view)
@@ -1143,18 +1165,18 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
 
     async def _ruleta_impl(self, source, color: str, monto: str):
         """Implementación compartida para /ruleta y %ruleta."""
-        user_id, author, guild, channel = self._get_source_info(source)
-        
+        user_id, _author, guild, channel = self._get_source_info(source)
+
         color_clean = color.lower().strip()
         if color_clean not in RULETA_COLOR_MAP:
             embed = discord.Embed(
                 title="❌ Color Inválido",
                 description=f"Ese color no juega en esta mesa, amigo. Elige bien:\n"
-                           f"🔴 **Rojo** (`r` o `rojo`) - Paga x{RULETA_PAYOUT_ROJO}\n"
-                           f"⚫ **Negro** (`b` o `negro`) - Paga x{RULETA_PAYOUT_NEGRO}\n"
-                           f"🟢 **Verde** (`g` o `verde`) - Paga x{RULETA_PAYOUT_VERDE} *(¡Alto riesgo!)*\n"
-                           f"*Ejemplo:* `{channel and channel.name or '%'}ruleta r 100`",
-                color=discord.Color.red()
+                f"🔴 **Rojo** (`r` o `rojo`) - Paga x{RULETA_PAYOUT_ROJO}\n"
+                f"⚫ **Negro** (`b` o `negro`) - Paga x{RULETA_PAYOUT_NEGRO}\n"
+                f"🟢 **Verde** (`g` o `verde`) - Paga x{RULETA_PAYOUT_VERDE} *(¡Alto riesgo!)*\n"
+                f"*Ejemplo:* `{channel and channel.name or '%'}ruleta r 100`",
+                color=discord.Color.red(),
             )
             await self._send_response(source, embed)
             return
@@ -1171,7 +1193,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 embed = discord.Embed(
                     title="❌ Monto Inválido",
                     description="Ingresa una cantidad válida o escribe `all`.",
-                    color=discord.Color.red()
+                    color=discord.Color.red(),
                 )
                 await self._send_response(source, embed)
                 return
@@ -1180,7 +1202,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 embed = discord.Embed(
                     title="❌ Fondos Insuficientes",
                     description=f"No tienes tantas almas en la mano. Tu saldo es de **{wallet:,} {CURRENCY_SYMBOL}**.",
-                    color=discord.Color.red()
+                    color=discord.Color.red(),
                 )
                 await self._send_response(source, embed)
                 return
@@ -1205,7 +1227,9 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 user["stats"]["gambles_won"] = user["stats"].get("gambles_won", 0) + 1
 
                 if resultado == "verde":
-                    quote = random.choice(IVY_RULETA_WIN_VERDE_QUOTES).format(multiplicador=multiplicador)
+                    quote = random.choice(IVY_RULETA_WIN_VERDE_QUOTES).format(
+                        multiplicador=multiplicador
+                    )
                 else:
                     quote = random.choice(IVY_RULETA_WIN_NORMAL_QUOTES).format(
                         emoji=color_emoji, color=resultado.upper()
@@ -1214,9 +1238,9 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 embed = discord.Embed(
                     title=f"🎰 ¡La bolilla descansó en {color_emoji} {resultado.upper()}!",
                     description=f"{quote}\n\n"
-                                f"💰 **Ganancia:** +{ganancia:,} {CURRENCY_SYMBOL}\n"
-                                f"💵 **En mano:** {user['wallet']:,} {CURRENCY_SYMBOL}",
-                    color=discord.Color.green()
+                    f"💰 **Ganancia:** +{ganancia:,} {CURRENCY_SYMBOL}\n"
+                    f"💵 **En mano:** {user['wallet']:,} {CURRENCY_SYMBOL}",
+                    color=discord.Color.green(),
                 )
                 embed.set_footer(text="¡Now that's what I call a lucky bounce!")
             else:
@@ -1238,9 +1262,9 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 embed = discord.Embed(
                     title=f"🎰 La bolilla frenó en {color_emoji} {resultado.upper()}",
                     description=f"{quote}\n\n"
-                                f"💸 **Pérdida:** -{parsed_amount:,} {CURRENCY_SYMBOL}\n"
-                                f"💵 **Billetera restante:** {user['wallet']:,} {CURRENCY_SYMBOL}",
-                    color=discord.Color.red()
+                    f"💸 **Pérdida:** -{parsed_amount:,} {CURRENCY_SYMBOL}\n"
+                    f"💵 **Billetera restante:** {user['wallet']:,} {CURRENCY_SYMBOL}",
+                    color=discord.Color.red(),
                 )
                 embed.set_footer(text="Sometimes you have to make your own opportunities...")
 
@@ -1266,7 +1290,9 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 user = await self.db.get_user_data(user_id)
                 inv = user.get("inventory", {})
                 last_rewind = user.get("last_paradox_rewind", 0.0)
-                if inv.get("paradox_chrono", 0) > 0 and (now - last_rewind >= PARADOX_COOLDOWN_SECONDS):
+                if inv.get("paradox_chrono", 0) > 0 and (
+                    now - last_rewind >= PARADOX_COOLDOWN_SECONDS
+                ):
                     view = RewindView(self, user_id, parsed_amount)
 
         await self._send_response(source, embed, view=view)
@@ -1278,7 +1304,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
 
     async def _deposit_impl(self, source, monto: str):
         """Implementación compartida para /deposit y %deposit."""
-        user_id, author, guild, channel = self._get_source_info(source)
+        user_id, _author, _guild, _channel = self._get_source_info(source)
 
         async with self.db.lock:
             user = await self.db.get_user_data(user_id)
@@ -1289,7 +1315,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 embed = discord.Embed(
                     title="❌ Monto Inválido",
                     description="Pon un número válido de almas a resguardar o escribe `all`.",
-                    color=discord.Color.red()
+                    color=discord.Color.red(),
                 )
                 await self._send_response(source, embed)
                 return
@@ -1298,7 +1324,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 embed = discord.Embed(
                     title="❌ Fondos Insuficientes",
                     description=f"¡No tenés esa cantidad en mano, amigo! Solo tienes **{wallet:,} {CURRENCY_SYMBOL}** en los bolsillos.",
-                    color=discord.Color.red()
+                    color=discord.Color.red(),
                 )
                 await self._send_response(source, embed)
                 return
@@ -1310,8 +1336,8 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             embed = discord.Embed(
                 title="🪨 ¡Almas Aseguradas en las Alturas!",
                 description=f"Subí volando a la cornisa más alta y guardé **{amount:,} {CURRENCY_SYMBOL}** en el nido de piedra.\n"
-                            f"Ni el ladrón más ágil del sindicato se anima a trepar hasta acá arriba.",
-                color=discord.Color.blue()
+                f"Ni el ladrón más ágil del sindicato se anima a trepar hasta acá arriba.",
+                color=discord.Color.blue(),
             )
             embed.add_field(name="💵 En Mano", value=f"{user['wallet']:,} {CURRENCY_SYMBOL}")
             embed.add_field(name="🪨 En la Cornisa", value=f"{user['bank']:,} {CURRENCY_SYMBOL}")
@@ -1321,7 +1347,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
 
     async def _withdraw_impl(self, source, monto: str):
         """Implementación compartida para /withdraw y %withdraw."""
-        user_id, author, guild, channel = self._get_source_info(source)
+        user_id, _author, _guild, channel = self._get_source_info(source)
 
         async with self.db.lock:
             user = await self.db.get_user_data(user_id)
@@ -1332,7 +1358,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 embed = discord.Embed(
                     title="❌ Monto Inválido",
                     description="Ingresa un monto válido o usa `all`.",
-                    color=discord.Color.red()
+                    color=discord.Color.red(),
                 )
                 await self._send_response(source, embed)
                 return
@@ -1341,7 +1367,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 embed = discord.Embed(
                     title="❌ Fondos Insuficientes",
                     description=f"No tienes tantas almas guardadas en la cornisa. Tu depósito es de **{bank_bal:,} {CURRENCY_SYMBOL}**.",
-                    color=discord.Color.red()
+                    color=discord.Color.red(),
                 )
                 await self._send_response(source, embed)
                 return
@@ -1353,8 +1379,8 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             embed = discord.Embed(
                 title="💸 Almas Bajadas a la Calle",
                 description=f"Te traje **{amount:,} {CURRENCY_SYMBOL}** desde la cornisa.\n"
-                            f"⚠️ **Aviso de gárgola:** Ahora que las llevas encima, cualquiera con `{channel and channel.name or '%'}rob` te las puede manotear si andas distraído.",
-                color=discord.Color.gold()
+                f"⚠️ **Aviso de gárgola:** Ahora que las llevas encima, cualquiera con `{channel and channel.name or '%'}rob` te las puede manotear si andas distraído.",
+                color=discord.Color.gold(),
             )
             embed.add_field(name="💵 En Mano", value=f"{user['wallet']:,} {CURRENCY_SYMBOL}")
             embed.add_field(name="🪨 En la Cornisa", value=f"{user['bank']:,} {CURRENCY_SYMBOL}")
@@ -1371,7 +1397,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             embed = discord.Embed(
                 title="❌ Transferencia Inválida",
                 description="¿Pasarte plata de un bolsillo al otro? No inventes cosas raras, chacho.",
-                color=discord.Color.red()
+                color=discord.Color.red(),
             )
             await self._send_response(source, embed)
             return
@@ -1380,8 +1406,8 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             embed = discord.Embed(
                 title="💖 Gesto Agradecido",
                 description="Aprecio el gesto de corazón, amigo, pero yo no cobro por cuidar el barrio. "
-                           "Ayudar a la gente es lo mío. ¡Guárdate esas almas para equiparte mejor!",
-                color=discord.Color.teal()
+                "Ayudar a la gente es lo mío. ¡Guárdate esas almas para equiparte mejor!",
+                color=discord.Color.teal(),
             )
             await self._send_response(source, embed)
             return
@@ -1395,7 +1421,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 embed = discord.Embed(
                     title="❌ Monto Inválido",
                     description="Pon un número válido de almas para transferir o usa `all`.",
-                    color=discord.Color.red()
+                    color=discord.Color.red(),
                 )
                 await self._send_response(source, embed)
                 return
@@ -1404,7 +1430,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 embed = discord.Embed(
                     title="❌ Fondos Insuficientes",
                     description=f"No tienes suficientes almas en mano. En tus bolsillos solo hay **{wallet:,} {CURRENCY_SYMBOL}**.",
-                    color=discord.Color.red()
+                    color=discord.Color.red(),
                 )
                 await self._send_response(source, embed)
                 return
@@ -1418,17 +1444,25 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         embed = discord.Embed(
             title="🌿 ¡Kudzu Connection Financiero!",
             description=f"**{author.display_name}** compartió un lazo de almas con **{receiver.display_name}** entregándole **{amount:,} {CURRENCY_SYMBOL}**.\n\n"
-                        f"*«¡Eso es jugar en equipo! Como siempre le digo al grupo: si nos apoyamos entre nosotros, nadie nos puede bajar.»*",
-            color=discord.Color.teal()
+            f"*«¡Eso es jugar en equipo! Como siempre le digo al grupo: si nos apoyamos entre nosotros, nadie nos puede bajar.»*",
+            color=discord.Color.teal(),
         )
-        embed.add_field(name=f"Bolsillo de {author.display_name}", value=f"{sender['wallet']:,} {CURRENCY_SYMBOL}", inline=True)
-        embed.add_field(name=f"Bolsillo de {receiver.display_name}", value=f"{receiver_data['wallet']:,} {CURRENCY_SYMBOL}", inline=True)
+        embed.add_field(
+            name=f"Bolsillo de {author.display_name}",
+            value=f"{sender['wallet']:,} {CURRENCY_SYMBOL}",
+            inline=True,
+        )
+        embed.add_field(
+            name=f"Bolsillo de {receiver.display_name}",
+            value=f"{receiver_data['wallet']:,} {CURRENCY_SYMBOL}",
+            inline=True,
+        )
         embed.set_footer(text="Now that's what I call teamwork!")
         await self._send_response(source, embed)
 
         if guild:
             leader_id, leader_wealth = self._top_leader_cache.get(guild.id, (0, 0))
-            sender_total = sender["wallet"] + sender["bank"]
+            sender["wallet"] + sender["bank"]
             receiver_total = receiver_data["wallet"] + receiver_data["bank"]
             if user_id == leader_id or receiver_total >= leader_wealth:
                 await self.actualizar_rol_millonario(guild, announce_channel=channel)
@@ -1442,7 +1476,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             embed = discord.Embed(
                 title="❌ Robo Inválido",
                 description="¿Te vas a robar a ti mismo, chacho? Ni Bebop haría semejante tontería. ¡Buscate algo útil que hacer!",
-                color=discord.Color.red()
+                color=discord.Color.red(),
             )
             await self._send_response(source, embed)
             return
@@ -1464,22 +1498,22 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                         embed = discord.Embed(
                             title="🚨 **¡TE PASASTE DE LISTO, CHACHO!**",
                             description=f"Intentaste robarle a Ivy por tercera vez y la policía te dejó sin salida.\n\n"
-                                        f"⛓️ **Condena:** {PRISON_DURATION // 60} minutos tras las rejas\n"
-                                        f"💸 **Multa:** -{multa_cobrada:,} {CURRENCY_SYMBOL}",
-                            color=discord.Color.dark_red()
+                            f"⛓️ **Condena:** {PRISON_DURATION // 60} minutos tras las rejas\n"
+                            f"💸 **Multa:** -{multa_cobrada:,} {CURRENCY_SYMBOL}",
+                            color=discord.Color.dark_red(),
                         )
                         await self._send_response(source, embed)
                         return
 
                     await self.db.save()
 
-                remaining = 3 - attempts
+                3 - attempts
                 embed = discord.Embed(
                     title="❌ ¡Oye!",
                     description=f"¿Estás intentando meterle la mano en el bolsillo a una gárgola de piedra maciza? "
-                                f"¡Te vas a romper los dedos! Además, yo protejo este barrio, no me afanes a mí.\n\n"
-                                f"⚠️ **Intento {attempts}/3**. Si vuelves a probar, la patrulla te mete preso.",
-                    color=discord.Color.orange()
+                    f"¡Te vas a romper los dedos! Además, yo protejo este barrio, no me afanes a mí.\n\n"
+                    f"⚠️ **Intento {attempts}/3**. Si vuelves a probar, la patrulla te mete preso.",
+                    color=discord.Color.orange(),
                 )
                 await self._send_response(source, embed)
                 return
@@ -1487,8 +1521,8 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             embed = discord.Embed(
                 title="❌ ¡Oye!",
                 description="¿Estás intentando meterle la mano en el bolsillo a una gárgola de piedra maciza? "
-                           "¡Te vas a romper los dedos! Además, yo protejo este barrio, no me afanes a mí.",
-                color=discord.Color.orange()
+                "¡Te vas a romper los dedos! Además, yo protejo este barrio, no me afanes a mí.",
+                color=discord.Color.orange(),
             )
             await self._send_response(source, embed)
             return
@@ -1504,9 +1538,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 time_str = self._format_time(remaining_prison)
                 quote = random.choice(IVY_PRISON_WARNING_QUOTES).format(time=time_str)
                 embed = discord.Embed(
-                    title="🚨 ¡Estás Tras las Rejas!",
-                    description=quote,
-                    color=discord.Color.red()
+                    title="🚨 ¡Estás Tras las Rejas!", description=quote, color=discord.Color.red()
                 )
                 await self._send_response(source, embed)
                 return
@@ -1520,7 +1552,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 embed = discord.Embed(
                     title="🤫 Calma los impulsos, chacho",
                     description=f"La policía y los vecinos están alertas. Esperá **{time_str}** a que se enfríe la calle antes del próximo golpe.",
-                    color=discord.Color.orange()
+                    color=discord.Color.orange(),
                 )
                 embed.set_footer(text="Don't got time to walk into another patrol.")
                 await self._send_response(source, embed)
@@ -1531,8 +1563,8 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 embed = discord.Embed(
                     title="🦴 Sin Botín",
                     description=f"¡Dejá tranquilo a {victim.mention}! Apenas tiene `{victim_data['wallet']}` {CURRENCY_SYMBOL} en los bolsillos. "
-                                f"En Spanish Harlem nos cuidamos entre vecinos, no le robamos a los secos.",
-                    color=discord.Color.orange()
+                    f"En Spanish Harlem nos cuidamos entre vecinos, no le robamos a los secos.",
+                    color=discord.Color.orange(),
                 )
                 await self._send_response(source, embed)
                 return
@@ -1573,9 +1605,11 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 embed = discord.Embed(
                     title="🛡️ ¡Defensa Gargolesca Absoluta!",
                     description=desc,
-                    color=discord.Color.dark_purple()
+                    color=discord.Color.dark_purple(),
                 )
-                embed.set_footer(text="Carlos always says: meterle la mano a quien lleva un amuleto es terminar en cana seguro.")
+                embed.set_footer(
+                    text="Carlos always says: meterle la mano a quien lleva un amuleto es terminar en cana seguro."
+                )
                 await self._send_response(source, embed)
                 return
 
@@ -1616,7 +1650,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                     victim=victim.mention,
                     duration=PRISON_DURATION // 60,
                     fine=multa_cobrada,
-                    currency=CURRENCY_SYMBOL
+                    currency=CURRENCY_SYMBOL,
                 )
 
                 if used_bail:
@@ -1625,7 +1659,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 embed = discord.Embed(
                     title="🚔 ¡CANAZO DIRECTO! ¡LA POLICÍA TE ATRAPÓ!",
                     description=quote,
-                    color=discord.Color.dark_red()
+                    color=discord.Color.dark_red(),
                 )
                 embed.set_footer(text="You tried to steal under a gargoyle's watch? Really?!")
             else:
@@ -1643,7 +1677,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                     thresh=effective_threshold,
                     loot=botin,
                     currency=CURRENCY_SYMBOL,
-                    victim=victim.mention
+                    victim=victim.mention,
                 )
 
                 lockpick_note = ""
@@ -1653,11 +1687,13 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 embed = discord.Embed(
                     title="🥷 ¡GOLPE CALLEJERO CONSUMADO!",
                     description=f"{quote}{lockpick_note}\n\n"
-                                f"💵 **Bolsillo de {author.mention}:** {robber['wallet']:,} {CURRENCY_SYMBOL}\n"
-                                f"🥀 **Bolsillo de {victim.mention}:** {victim_data['wallet']:,} {CURRENCY_SYMBOL}",
-                    color=discord.Color.green()
+                    f"💵 **Bolsillo de {author.mention}:** {robber['wallet']:,} {CURRENCY_SYMBOL}\n"
+                    f"🥀 **Bolsillo de {victim.mention}:** {victim_data['wallet']:,} {CURRENCY_SYMBOL}",
+                    color=discord.Color.green(),
                 )
-                embed.set_footer(text=f"💡 Consejo para la víctima: ¡Resguárdate en la cornisa con '{channel and channel.name or '%'}deposit'!")
+                embed.set_footer(
+                    text=f"💡 Consejo para la víctima: ¡Resguárdate en la cornisa con '{channel and channel.name or '%'}deposit'!"
+                )
 
         await self._send_response(source, embed)
 
@@ -1669,7 +1705,9 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
 
     async def _blackjack_impl(self, interaction: discord.Interaction, monto: str):
         """Implementación compartida para /blackjack y %blackjack."""
-        await interaction.response.send_message("⚠️ /blackjack en desarrollo. Usa %blackjack por ahora.")
+        await interaction.response.send_message(
+            "⚠️ /blackjack en desarrollo. Usa %blackjack por ahora."
+        )
 
     async def _tienda_impl(self, interaction: discord.Interaction):
         """Implementación compartida para /tienda y %tienda."""
@@ -1699,7 +1737,9 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         """Implementación compartida para /rank y %rank."""
         await interaction.response.send_message("⚠️ /rank en desarrollo. Usa %rank por ahora.")
 
-    async def _duelo_impl(self, interaction: discord.Interaction, oponente: discord.User, monto: str):
+    async def _duelo_impl(
+        self, interaction: discord.Interaction, oponente: discord.User, monto: str
+    ):
         """Implementación compartida para /duelo y %duelo."""
         await interaction.response.send_message("⚠️ /duelo en desarrollo. Usa %duelo por ahora.")
 
@@ -1709,9 +1749,13 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
 
     async def _rebobinar_impl(self, interaction: discord.Interaction):
         """Implementación compartida para /rebobinar y %rebobinar."""
-        await interaction.response.send_message("⚠️ /rebobinar en desarrollo. Usa %rebobinar por ahora.")
+        await interaction.response.send_message(
+            "⚠️ /rebobinar en desarrollo. Usa %rebobinar por ahora."
+        )
 
-    async def _jail_impl(self, interaction: discord.Interaction, usuario: discord.User, minutos: int):
+    async def _jail_impl(
+        self, interaction: discord.Interaction, usuario: discord.User, minutos: int
+    ):
         """Implementación compartida para /jail y %jail."""
         await interaction.response.send_message("⚠️ /jail en desarrollo. Usa %jail por ahora.")
 
@@ -1719,13 +1763,25 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         """Implementación compartida para /unjail y %unjail."""
         await interaction.response.send_message("⚠️ /unjail en desarrollo. Usa %unjail por ahora.")
 
-    async def _addmoney_impl(self, interaction: discord.Interaction, usuario: discord.User, monto: int, destino: str):
+    async def _addmoney_impl(
+        self, interaction: discord.Interaction, usuario: discord.User, monto: int, destino: str
+    ):
         """Implementación compartida para /addmoney y %addmoney."""
-        await interaction.response.send_message("⚠️ /addmoney en desarrollo. Usa %addmoney por ahora.")
+        await interaction.response.send_message(
+            "⚠️ /addmoney en desarrollo. Usa %addmoney por ahora."
+        )
 
-    async def _setmoney_impl(self, interaction: discord.Interaction, usuario: discord.User, wallet: int, bank: int = None):
+    async def _setmoney_impl(
+        self,
+        interaction: discord.Interaction,
+        usuario: discord.User,
+        wallet: int,
+        bank: int | None = None,
+    ):
         """Implementación compartida para /setmoney y %setmoney."""
-        await interaction.response.send_message("⚠️ /setmoney en desarrollo. Usa %setmoney por ahora.")
+        await interaction.response.send_message(
+            "⚠️ /setmoney en desarrollo. Usa %setmoney por ahora."
+        )
 
     # --------------------------------------------------------------------------
     #                    COMANDO: COIN / CARA O CRUZ
@@ -1736,8 +1792,14 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         """Tiras una moneda al aire desde lo alto de la cornisa (cara o cruz)."""
         eleccion_clean = eleccion.lower().strip()
         alias_map = {
-            "cara": "cara", "c": "cara", "heads": "cara", "h": "cara",
-            "cruz": "cruz", "x": "cruz", "tails": "cruz", "t": "cruz"
+            "cara": "cara",
+            "c": "cara",
+            "heads": "cara",
+            "h": "cara",
+            "cruz": "cruz",
+            "x": "cruz",
+            "tails": "cruz",
+            "t": "cruz",
         }
 
         if eleccion_clean not in alias_map:
@@ -1757,7 +1819,9 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
 
             parsed_amount = self._parse_amount(monto, wallet)
             if parsed_amount is None:
-                await ctx.reply("❌ Pon un monto válido en números positivos o usa `all` si tienes agallas de gárgola.")
+                await ctx.reply(
+                    "❌ Pon un monto válido en números positivos o usa `all` si tienes agallas de gárgola."
+                )
                 return
 
             if parsed_amount > wallet or parsed_amount == 0:
@@ -1778,9 +1842,9 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 embed = discord.Embed(
                     title=f"🪙 ¡Moneda al Aire: Salió {resultado.upper()}!",
                     description=f"{quote}\n\n"
-                                f"🎉 **Ganancia neta:** +{ganancia:,} {CURRENCY_SYMBOL}\n"
-                                f"💵 **Billetera actual:** {user['wallet']:,} {CURRENCY_SYMBOL}",
-                    color=discord.Color.green()
+                    f"🎉 **Ganancia neta:** +{ganancia:,} {CURRENCY_SYMBOL}\n"
+                    f"💵 **Billetera actual:** {user['wallet']:,} {CURRENCY_SYMBOL}",
+                    color=discord.Color.green(),
                 )
                 embed.set_footer(text="Who says vigilante work doesn't pay the bills?")
             else:
@@ -1800,9 +1864,9 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 embed = discord.Embed(
                     title=f"🪙 Moneda al Aire: Salió {resultado.upper()}",
                     description=f"{quote}\n\n"
-                                f"💸 **Pérdida:** -{parsed_amount:,} {CURRENCY_SYMBOL}\n"
-                                f"💵 **Te quedaron:** {user['wallet']:,} {CURRENCY_SYMBOL}",
-                    color=discord.Color.red()
+                    f"💸 **Pérdida:** -{parsed_amount:,} {CURRENCY_SYMBOL}\n"
+                    f"💵 **Te quedaron:** {user['wallet']:,} {CURRENCY_SYMBOL}",
+                    color=discord.Color.red(),
                 )
                 embed.set_footer(text="I always get a little nervous before taking big risks...")
 
@@ -1895,7 +1959,9 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 user["stats"]["gambles_won"] = user["stats"].get("gambles_won", 0) + 1
 
                 if resultado == "verde":
-                    quote = random.choice(IVY_RULETA_WIN_VERDE_QUOTES).format(multiplicador=multiplicador)
+                    quote = random.choice(IVY_RULETA_WIN_VERDE_QUOTES).format(
+                        multiplicador=multiplicador
+                    )
                 else:
                     quote = random.choice(IVY_RULETA_WIN_NORMAL_QUOTES).format(
                         emoji=color_emoji, color=resultado.upper()
@@ -1904,9 +1970,9 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 embed = discord.Embed(
                     title=f"🎰 ¡La bolilla descansó en {color_emoji} {resultado.upper()}!",
                     description=f"{quote}\n\n"
-                                f"💰 **Ganancia:** +{ganancia:,} {CURRENCY_SYMBOL}\n"
-                                f"💵 **En mano:** {user['wallet']:,} {CURRENCY_SYMBOL}",
-                    color=discord.Color.green()
+                    f"💰 **Ganancia:** +{ganancia:,} {CURRENCY_SYMBOL}\n"
+                    f"💵 **En mano:** {user['wallet']:,} {CURRENCY_SYMBOL}",
+                    color=discord.Color.green(),
                 )
                 embed.set_footer(text="¡Now that's what I call a lucky bounce!")
             else:
@@ -1928,9 +1994,9 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 embed = discord.Embed(
                     title=f"🎰 La bolilla frenó en {color_emoji} {resultado.upper()}",
                     description=f"{quote}\n\n"
-                                f"💸 **Pérdida:** -{parsed_amount:,} {CURRENCY_SYMBOL}\n"
-                                f"💵 **Billetera restante:** {user['wallet']:,} {CURRENCY_SYMBOL}",
-                    color=discord.Color.red()
+                    f"💸 **Pérdida:** -{parsed_amount:,} {CURRENCY_SYMBOL}\n"
+                    f"💵 **Billetera restante:** {user['wallet']:,} {CURRENCY_SYMBOL}",
+                    color=discord.Color.red(),
                 )
                 embed.set_footer(text="Sometimes you have to make your own opportunities...")
 
@@ -1983,9 +2049,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 time_str = self._format_time(remaining_prison)
                 quote = random.choice(IVY_PRISON_WARNING_QUOTES).format(time=time_str)
                 embed = discord.Embed(
-                    title="🚨 ¡Estás en Cana, Chacho!",
-                    description=quote,
-                    color=discord.Color.red()
+                    title="🚨 ¡Estás en Cana, Chacho!", description=quote, color=discord.Color.red()
                 )
                 embed.set_footer(text="Ivy no deja jugar a las cartas a los presos.")
                 await ctx.reply(embed=embed)
@@ -2043,9 +2107,9 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                     embed = discord.Embed(
                         title="⚖️ ¡Doble Blackjack! Empate en la Mesa (Push)",
                         description=f"{quote}\n\n"
-                                    f"🔄 **Apuesta recuperada:** {parsed_amount:,} {CURRENCY_SYMBOL}\n"
-                                    f"💵 **Billetera:** {user['wallet']:,} {CURRENCY_SYMBOL}",
-                        color=discord.Color.light_grey()
+                        f"🔄 **Apuesta recuperada:** {parsed_amount:,} {CURRENCY_SYMBOL}\n"
+                        f"💵 **Billetera:** {user['wallet']:,} {CURRENCY_SYMBOL}",
+                        color=discord.Color.light_grey(),
                     )
                 elif player_natural:
                     # Victoria natural 3:2 (x2.5)
@@ -2065,16 +2129,14 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                     await self.db.save()
 
                     quote = random.choice(IVY_BLACKJACK_NATURAL_QUOTES).format(
-                        payout=BLACKJACK_PAYOUT_NATURAL,
-                        profit=ganancia,
-                        symbol=CURRENCY_SYMBOL
+                        payout=BLACKJACK_PAYOUT_NATURAL, profit=ganancia, symbol=CURRENCY_SYMBOL
                     )
                     embed = discord.Embed(
                         title="✨ ¡¡BLACKJACK NATURAL EN LA CORNISA!! (x2.5)",
                         description=f"{quote}\n\n"
-                                    f"🎉 **Ganancia neta:** +{ganancia:,} {CURRENCY_SYMBOL}\n"
-                                    f"💵 **Billetera actual:** {user['wallet']:,} {CURRENCY_SYMBOL}",
-                        color=discord.Color.gold()
+                        f"🎉 **Ganancia neta:** +{ganancia:,} {CURRENCY_SYMBOL}\n"
+                        f"💵 **Billetera actual:** {user['wallet']:,} {CURRENCY_SYMBOL}",
+                        color=discord.Color.gold(),
                     )
                     if is_richest and not is_valid_reset:
                         embed.set_footer(
@@ -2093,15 +2155,14 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                     await self.db.save()
 
                     quote = random.choice(IVY_BLACKJACK_LOSS_QUOTES).format(
-                        player_total=calculate_hand(player_hand),
-                        dealer_total=21
+                        player_total=calculate_hand(player_hand), dealer_total=21
                     )
                     embed = discord.Embed(
                         title="💸 ¡Ivy Clavó Blackjack Natural!",
                         description=f"{quote}\n\n"
-                                    f"💸 **Pérdida:** -{parsed_amount:,} {CURRENCY_SYMBOL}\n"
-                                    f"💵 **Te quedaron:** {user['wallet']:,} {CURRENCY_SYMBOL}",
-                        color=discord.Color.red()
+                        f"💸 **Pérdida:** -{parsed_amount:,} {CURRENCY_SYMBOL}\n"
+                        f"💵 **Te quedaron:** {user['wallet']:,} {CURRENCY_SYMBOL}",
+                        color=discord.Color.red(),
                     )
                     if is_richest and not is_valid_reset:
                         embed.set_footer(
@@ -2109,14 +2170,18 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                         )
 
             embed.add_field(
-                name=f"👤 Mano de {ctx.author.display_name} (21)" if player_natural else f"👤 Mano de {ctx.author.display_name} ({calculate_hand(player_hand)})",
+                name=f"👤 Mano de {ctx.author.display_name} (21)"
+                if player_natural
+                else f"👤 Mano de {ctx.author.display_name} ({calculate_hand(player_hand)})",
                 value=format_hand(player_hand),
-                inline=False
+                inline=False,
             )
             embed.add_field(
-                name="🪨 Mano de Ivy - Crupier (21)" if dealer_natural else f"🪨 Mano de Ivy - Crupier ({calculate_hand(dealer_hand)})",
+                name="🪨 Mano de Ivy - Crupier (21)"
+                if dealer_natural
+                else f"🪨 Mano de Ivy - Crupier ({calculate_hand(dealer_hand)})",
                 value=format_hand(dealer_hand),
-                inline=False
+                inline=False,
             )
             await ctx.reply(embed=embed)
 
@@ -2142,7 +2207,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             title=f"🃏 Blackjack Callejero - Mano de {ctx.author.display_name}",
             description="Tiramos paño en la cornisa. ¿Qué jugada vas a hacer, chacho?",
             color=discord.Color.blue(),
-            hide_dealer=True
+            hide_dealer=True,
         )
 
         msg = await ctx.reply(embed=initial_embed, view=view)
@@ -2165,25 +2230,21 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         embed = discord.Embed(
             title=f"🏛️ El Escondite de {ctx.author.display_name} en los Tejados",
             description="Las gárgolas sabemos que dejar la plata en el suelo es una invitación a que te la afanen.",
-            color=discord.Color.gold()
+            color=discord.Color.gold(),
         )
         embed.set_thumbnail(url=ctx.author.display_avatar.url)
+        embed.add_field(name="💵 En Mano", value=f"**{wallet:,}** {CURRENCY_SYMBOL}", inline=True)
         embed.add_field(
-            name="💵 En Mano",
-            value=f"**{wallet:,}** {CURRENCY_SYMBOL}",
-            inline=True
-        )
-        embed.add_field(
-            name="🪨 En la Cornisa",
-            value=f"**{bank_bal:,}** {CURRENCY_SYMBOL}",
-            inline=True
+            name="🪨 En la Cornisa", value=f"**{bank_bal:,}** {CURRENCY_SYMBOL}", inline=True
         )
         embed.add_field(
             name="💰 Patrimonio Total Acumulado",
             value=f"**{total:,}** {CURRENCY_NAME} {CURRENCY_SYMBOL}",
-            inline=False
+            inline=False,
         )
-        embed.set_footer(text=f"Usa '{ctx.prefix}deposit <monto>' para subir plata al tejado o '{ctx.prefix}withdraw <monto>' para bajarla.")
+        embed.set_footer(
+            text=f"Usa '{ctx.prefix}deposit <monto>' para subir plata al tejado o '{ctx.prefix}withdraw <monto>' para bajarla."
+        )
         await ctx.reply(embed=embed)
 
     @bank.command(name="deposit", aliases=["dep", "d"])
@@ -2223,8 +2284,8 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             embed = discord.Embed(
                 title="🪨 ¡Almas Aseguradas en las Alturas!",
                 description=f"Subí volando a la cornisa más alta y guardé **{amount:,} {CURRENCY_SYMBOL}** en el nido de piedra.\n"
-                            f"Ni el ladrón más ágil del sindicato se anima a trepar hasta acá arriba.",
-                color=discord.Color.blue()
+                f"Ni el ladrón más ágil del sindicato se anima a trepar hasta acá arriba.",
+                color=discord.Color.blue(),
             )
             embed.add_field(name="💵 En Mano", value=f"{user['wallet']:,} {CURRENCY_SYMBOL}")
             embed.add_field(name="🪨 En la Cornisa", value=f"{user['bank']:,} {CURRENCY_SYMBOL}")
@@ -2259,8 +2320,8 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             embed = discord.Embed(
                 title="💸 Almas Bajadas a la Calle",
                 description=f"Te traje **{amount:,} {CURRENCY_SYMBOL}** desde la cornisa.\n"
-                            f"⚠️ **Aviso de gárgola:** Ahora que las llevas encima, cualquiera con `{ctx.prefix}rob` te las puede manotear si andas distraído.",
-                color=discord.Color.gold()
+                f"⚠️ **Aviso de gárgola:** Ahora que las llevas encima, cualquiera con `{ctx.prefix}rob` te las puede manotear si andas distraído.",
+                color=discord.Color.gold(),
             )
             embed.add_field(name="💵 En Mano", value=f"{user['wallet']:,} {CURRENCY_SYMBOL}")
             embed.add_field(name="🪨 En la Cornisa", value=f"{user['bank']:,} {CURRENCY_SYMBOL}")
@@ -2280,7 +2341,9 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
 
         # Validaciones de interacción directa
         if victim_id == robber_id:
-            await ctx.reply("❌ ¿Te vas a robar a ti mismo, chacho? Ni Bebop haría semejante tontería. ¡Buscate algo útil que hacer!")
+            await ctx.reply(
+                "❌ ¿Te vas a robar a ti mismo, chacho? Ni Bebop haría semejante tontería. ¡Buscate algo útil que hacer!"
+            )
             return
 
         if victim.bot:
@@ -2307,7 +2370,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
 
                     await self.db.save()
 
-                remaining = 3 - attempts
+                3 - attempts
                 await ctx.reply(
                     f"❌ ¡Oye! ¿Estás intentando meterle la mano en el bolsillo a una gárgola de piedra maciza? "
                     f"¡Te vas a romper los dedos! Además, yo protejo este barrio, no me afanes a mí.\n\n"
@@ -2332,9 +2395,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 time_str = self._format_time(remaining_prison)
                 quote = random.choice(IVY_PRISON_WARNING_QUOTES).format(time=time_str)
                 embed = discord.Embed(
-                    title="🚨 ¡Estás Tras las Rejas!",
-                    description=quote,
-                    color=discord.Color.red()
+                    title="🚨 ¡Estás Tras las Rejas!", description=quote, color=discord.Color.red()
                 )
                 await ctx.reply(embed=embed)
                 return
@@ -2348,7 +2409,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 embed = discord.Embed(
                     title="🤫 Calma los impulsos, chacho",
                     description=f"La policía y los vecinos están alertas. Esperá **{time_str}** a que se enfríe la calle antes del próximo golpe.",
-                    color=discord.Color.orange()
+                    color=discord.Color.orange(),
                 )
                 embed.set_footer(text="Don't got time to walk into another patrol.")
                 await ctx.reply(embed=embed)
@@ -2398,9 +2459,11 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 embed = discord.Embed(
                     title="🛡️ ¡Defensa Gargolesca Absoluta!",
                     description=desc,
-                    color=discord.Color.dark_purple()
+                    color=discord.Color.dark_purple(),
                 )
-                embed.set_footer(text="Carlos always says: meterle la mano a quien lleva un amuleto es terminar en cana seguro.")
+                embed.set_footer(
+                    text="Carlos always says: meterle la mano a quien lleva un amuleto es terminar en cana seguro."
+                )
                 await ctx.reply(embed=embed)
                 return
 
@@ -2441,7 +2504,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                     victim=victim.mention,
                     duration=PRISON_DURATION // 60,
                     fine=multa_cobrada,
-                    currency=CURRENCY_SYMBOL
+                    currency=CURRENCY_SYMBOL,
                 )
 
                 if used_bail:
@@ -2450,7 +2513,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 embed = discord.Embed(
                     title="🚔 ¡CANAZO DIRECTO! ¡LA POLICÍA TE ATRAPÓ!",
                     description=quote,
-                    color=discord.Color.dark_red()
+                    color=discord.Color.dark_red(),
                 )
                 embed.set_footer(text="You tried to steal under a gargoyle's watch? Really?!")
             else:
@@ -2468,7 +2531,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                     thresh=effective_threshold,
                     loot=botin,
                     currency=CURRENCY_SYMBOL,
-                    victim=victim.mention
+                    victim=victim.mention,
                 )
 
                 lockpick_note = ""
@@ -2478,11 +2541,13 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 embed = discord.Embed(
                     title="🥷 ¡GOLPE CALLEJERO CONSUMADO!",
                     description=f"{quote}{lockpick_note}\n\n"
-                                f"💵 **Bolsillo de {ctx.author.mention}:** {robber['wallet']:,} {CURRENCY_SYMBOL}\n"
-                                f"🥀 **Bolsillo de {victim.mention}:** {victim_data['wallet']:,} {CURRENCY_SYMBOL}",
-                    color=discord.Color.green()
+                    f"💵 **Bolsillo de {ctx.author.mention}:** {robber['wallet']:,} {CURRENCY_SYMBOL}\n"
+                    f"🥀 **Bolsillo de {victim.mention}:** {victim_data['wallet']:,} {CURRENCY_SYMBOL}",
+                    color=discord.Color.green(),
                 )
-                embed.set_footer(text=f"💡 Consejo para la víctima: ¡Resguárdate en la cornisa con '{ctx.prefix}deposit'!")
+                embed.set_footer(
+                    text=f"💡 Consejo para la víctima: ¡Resguárdate en la cornisa con '{ctx.prefix}deposit'!"
+                )
 
         await ctx.reply(embed=embed)
         if ctx.guild:
@@ -2503,7 +2568,9 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         receiver_id = receiver.id
 
         if receiver_id == sender_id:
-            await ctx.reply("❌ ¿Pasarte plata de un bolsillo al otro? No inventes cosas raras, chacho.")
+            await ctx.reply(
+                "❌ ¿Pasarte plata de un bolsillo al otro? No inventes cosas raras, chacho."
+            )
             return
 
         if receiver.bot:
@@ -2537,16 +2604,24 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         embed = discord.Embed(
             title="🌿 ¡Kudzu Connection Financiero!",
             description=f"**{ctx.author.display_name}** compartió un lazo de almas con **{receiver.display_name}** entregándole **{amount:,} {CURRENCY_SYMBOL}**.\n\n"
-                        f"*«¡Eso es jugar en equipo! Como siempre le digo al grupo: si nos apoyamos entre nosotros, nadie nos puede bajar.»*",
-            color=discord.Color.teal()
+            f"*«¡Eso es jugar en equipo! Como siempre le digo al grupo: si nos apoyamos entre nosotros, nadie nos puede bajar.»*",
+            color=discord.Color.teal(),
         )
-        embed.add_field(name=f"Bolsillo de {ctx.author.display_name}", value=f"{sender['wallet']:,} {CURRENCY_SYMBOL}", inline=True)
-        embed.add_field(name=f"Bolsillo de {receiver.display_name}", value=f"{receiver_data['wallet']:,} {CURRENCY_SYMBOL}", inline=True)
+        embed.add_field(
+            name=f"Bolsillo de {ctx.author.display_name}",
+            value=f"{sender['wallet']:,} {CURRENCY_SYMBOL}",
+            inline=True,
+        )
+        embed.add_field(
+            name=f"Bolsillo de {receiver.display_name}",
+            value=f"{receiver_data['wallet']:,} {CURRENCY_SYMBOL}",
+            inline=True,
+        )
         embed.set_footer(text="Now that's what I call teamwork!")
         await ctx.reply(embed=embed)
         if ctx.guild:
             leader_id, leader_wealth = self._top_leader_cache.get(ctx.guild.id, (0, 0))
-            sender_total = sender["wallet"] + sender["bank"]
+            sender["wallet"] + sender["bank"]
             receiver_total = receiver_data["wallet"] + receiver_data["bank"]
             if sender_id == leader_id or receiver_total >= leader_wealth:
                 await self.actualizar_rol_millonario(ctx.guild, announce_channel=ctx.channel)
@@ -2569,21 +2644,35 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         embed = discord.Embed(
             title=f"💳 Balance de {member.display_name}",
             description="Revisando el registro de almas en los archivos de Spanish Harlem.",
-            color=discord.Color.blue()
+            color=discord.Color.blue(),
         )
         embed.set_thumbnail(url=member.display_avatar.url)
-        embed.add_field(name="💵 En Mano (Bolsillos)", value=f"**{wallet:,}** {CURRENCY_SYMBOL}", inline=True)
-        embed.add_field(name="🪨 En la Cornisa (Banco)", value=f"**{bank_bal:,}** {CURRENCY_SYMBOL}", inline=True)
-        embed.add_field(name="💰 Patrimonio Neto", value=f"**{total:,}** {CURRENCY_NAME} {CURRENCY_SYMBOL}", inline=False)
+        embed.add_field(
+            name="💵 En Mano (Bolsillos)", value=f"**{wallet:,}** {CURRENCY_SYMBOL}", inline=True
+        )
+        embed.add_field(
+            name="🪨 En la Cornisa (Banco)",
+            value=f"**{bank_bal:,}** {CURRENCY_SYMBOL}",
+            inline=True,
+        )
+        embed.add_field(
+            name="💰 Patrimonio Neto",
+            value=f"**{total:,}** {CURRENCY_NAME} {CURRENCY_SYMBOL}",
+            inline=False,
+        )
 
         if in_prison:
             embed.add_field(
                 name="🚨 Estado Penal",
                 value=f"⛓️ **EN EL CALABOZO** (le restan {self._format_time(rem)} de condena)",
-                inline=False
+                inline=False,
             )
         else:
-            embed.add_field(name="🕊️ Estado Legal", value="Ciudadano libre y sin causas pendientes.", inline=False)
+            embed.add_field(
+                name="🕊️ Estado Legal",
+                value="Ciudadano libre y sin causas pendientes.",
+                inline=False,
+            )
 
         embed.set_footer(text="Helping people's what I do.")
         await ctx.reply(embed=embed)
@@ -2611,21 +2700,23 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             embed = discord.Embed(
                 title=f"🔒 {member.display_name} está en CANA",
                 description=f"Le restan **{self._format_time(rem)}** de condena tras las rejas por intentar hacer fechorías.\n"
-                            f"No puede usar `{ctx.prefix}work` ni `{ctx.prefix}rob` hasta que cumpla su tiempo.",
-                color=discord.Color.red()
+                f"No puede usar `{ctx.prefix}work` ni `{ctx.prefix}rob` hasta que cumpla su tiempo.",
+                color=discord.Color.red(),
             )
             embed.set_footer(text="You do the crime, you do the time, chacho.")
         else:
             embed = discord.Embed(
                 title=f"🕊️ {member.display_name} es un ciudadano limpio",
                 description="Camina tranquilo por Spanish Harlem sin deberle nada a la ley ni al sindicato.",
-                color=discord.Color.green()
+                color=discord.Color.green(),
             )
             embed.set_footer(text="Keep it up, ally!")
 
         await ctx.reply(embed=embed)
 
-    @commands.command(name="rank", aliases=["ranking", "leaderboard", "lb", "top", "ricos", "baltop"])
+    @commands.command(
+        name="rank", aliases=["ranking", "leaderboard", "lb", "top", "ricos", "baltop"]
+    )
     async def rank(self, ctx: commands.Context):
         """Muestra el ranking de los vecinos con más almas en Spanish Harlem."""
         # Sincronizar y obtener el rol del más millonario
@@ -2637,12 +2728,12 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
 
             # Ordenar usuarios por patrimonio total (mano + banco), asegurando solo IDs de usuarios reales
             sorted_users = [
-                (uid_str, data) for uid_str, data in all_users.items()
+                (uid_str, data)
+                for uid_str, data in all_users.items()
                 if uid_str.isdigit() and isinstance(data, dict)
             ]
             sorted_users.sort(
-                key=lambda item: item[1].get("wallet", 0) + item[1].get("bank", 0),
-                reverse=True
+                key=lambda item: item[1].get("wallet", 0) + item[1].get("bank", 0), reverse=True
             )
 
             # Buscar la posición del autor en el ranking
@@ -2658,7 +2749,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         embed = discord.Embed(
             title="🏆 Ranking de Almas de Spanish Harlem",
             description="Desde las cornisas más altas las gárgolas vemos todo, y sabemos muy bien quiénes son los más forrados de almas en el barrio.",
-            color=discord.Color.gold()
+            color=discord.Color.gold(),
         )
 
         lines = []
@@ -2690,7 +2781,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                     name = f"Vecino ({uid_str})"
 
             total = data.get("wallet", 0) + data.get("bank", 0)
-            is_richest = (rank_num == 1 and total > 0)
+            is_richest = rank_num == 1 and total > 0
 
             crown = " 👑" if is_richest else ""
             tag = f" `[{role.name}]`" if (is_richest and role) else ""
@@ -2701,8 +2792,18 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 if idle_h >= INACTIVITY_STAGE_1_HOURS:
                     inactivity_tag = f" *(⚠️ Inactivo {int(idle_h)}h)*"
 
-            medal = "🥇" if rank_num == 1 else "🥈" if rank_num == 2 else "🥉" if rank_num == 3 else f"**#{rank_num}**"
-            lines.append(f"{medal}{crown} **{name}**{tag}{inactivity_tag}: {total:,} {CURRENCY_SYMBOL} *(Mano: {data.get('wallet', 0):,} | Cornisa: {data.get('bank', 0):,})*")
+            medal = (
+                "🥇"
+                if rank_num == 1
+                else "🥈"
+                if rank_num == 2
+                else "🥉"
+                if rank_num == 3
+                else f"**#{rank_num}**"
+            )
+            lines.append(
+                f"{medal}{crown} **{name}**{tag}{inactivity_tag}: {total:,} {CURRENCY_SYMBOL} *(Mano: {data.get('wallet', 0):,} | Cornisa: {data.get('bank', 0):,})*"
+            )
             rank_num += 1
 
         embed.description = (
@@ -2714,7 +2815,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             embed.add_field(
                 name="📍 Tu Lugar en la Tabla",
                 value=f"Estás en el puesto **#{author_rank}** con un total de **{author_total:,} {CURRENCY_NAME} {CURRENCY_SYMBOL}**.",
-                inline=False
+                inline=False,
             )
 
         embed.set_footer(text="Carlos always says: don't let wealth get to your head.")
@@ -2730,7 +2831,10 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         target = usuario or interaction.user
         await self._bal_impl(interaction, target)
 
-    @app_commands.command(name="work", description="Trabaja para ganar almas (cooldown 1h, reducido con Cafe de Carlos)")
+    @app_commands.command(
+        name="work",
+        description="Trabaja para ganar almas (cooldown 1h, reducido con Cafe de Carlos)",
+    )
     async def slash_work(self, interaction: discord.Interaction):
         await self._work_impl(interaction)
 
@@ -2741,15 +2845,18 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
 
     @app_commands.command(name="ruleta", description="Apuesta a rojo/negro/verde en la ruleta")
     @app_commands.describe(
-        color="Color: rojo, negro o verde",
-        monto="Cantidad a apostar (ej: 100, half, all)"
+        color="Color: rojo, negro o verde", monto="Cantidad a apostar (ej: 100, half, all)"
     )
-    @app_commands.choices(color=[
-        app_commands.Choice(name="Rojo", value="rojo"),
-        app_commands.Choice(name="Negro", value="negro"),
-        app_commands.Choice(name="Verde", value="verde"),
-    ])
-    async def slash_ruleta(self, interaction: discord.Interaction, color: app_commands.Choice[str], monto: str):
+    @app_commands.choices(
+        color=[
+            app_commands.Choice(name="Rojo", value="rojo"),
+            app_commands.Choice(name="Negro", value="negro"),
+            app_commands.Choice(name="Verde", value="verde"),
+        ]
+    )
+    async def slash_ruleta(
+        self, interaction: discord.Interaction, color: app_commands.Choice[str], monto: str
+    ):
         await self._ruleta_impl(interaction, color.value, monto)
 
     @app_commands.command(name="deposit", description="Deposita almas en el banco")
@@ -2763,11 +2870,15 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         await self._withdraw_impl(interaction, monto)
 
     @app_commands.command(name="pay", description="Transfiere almas a otro usuario")
-    @app_commands.describe(usuario="Usuario destinatario", monto="Cantidad a transferir (ej: 100, half, all)")
+    @app_commands.describe(
+        usuario="Usuario destinatario", monto="Cantidad a transferir (ej: 100, half, all)"
+    )
     async def slash_pay(self, interaction: discord.Interaction, usuario: discord.User, monto: str):
         await self._pay_impl(interaction, usuario, monto)
 
-    @app_commands.command(name="rob", description="Intenta robar a otro usuario (riesgo de multa/carcel)")
+    @app_commands.command(
+        name="rob", description="Intenta robar a otro usuario (riesgo de multa/carcel)"
+    )
     @app_commands.describe(victima="Usuario a quien robar")
     async def slash_rob(self, interaction: discord.Interaction, victima: discord.User):
         await self._rob_impl(interaction, victima)
@@ -2782,7 +2893,9 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         await self._tienda_impl(interaction)
 
     @app_commands.command(name="comprar", description="Compra un articulo de la tienda")
-    @app_commands.describe(item="ID o alias del articulo", cantidad="Cantidad a comprar (default: 1)")
+    @app_commands.describe(
+        item="ID o alias del articulo", cantidad="Cantidad a comprar (default: 1)"
+    )
     async def slash_comprar(self, interaction: discord.Interaction, item: str, cantidad: int = 1):
         await self._comprar_impl(interaction, item, cantidad)
 
@@ -2812,7 +2925,9 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
 
     @app_commands.command(name="duelo", description="Reta a un duelo callejero con apuestas")
     @app_commands.describe(oponente="Usuario a retar", monto="Apuesta inicial (ej: 100, half, all)")
-    async def slash_duelo(self, interaction: discord.Interaction, oponente: discord.User, monto: str):
+    async def slash_duelo(
+        self, interaction: discord.Interaction, oponente: discord.User, monto: str
+    ):
         await self._duelo_impl(interaction, oponente, monto)
 
     @app_commands.command(name="bet", description="Apuesta en un duelo en curso")
@@ -2820,14 +2935,21 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
     async def slash_bet(self, interaction: discord.Interaction, lado: discord.User, monto: str):
         await self._bet_impl(interaction, lado, monto)
 
-    @app_commands.command(name="rebobinar", description="Usa el Cronometro de Paradox para recuperar tu ultima perdida")
+    @app_commands.command(
+        name="rebobinar",
+        description="Usa el Cronometro de Paradox para recuperar tu ultima perdida",
+    )
     async def slash_rebobinar(self, interaction: discord.Interaction):
         await self._rebobinar_impl(interaction)
 
     @app_commands.command(name="jail", description="(Admin) Envia a un usuario a prision")
-    @app_commands.describe(usuario="Usuario a encarcelar", minutos="Duracion en minutos (default: 10)")
+    @app_commands.describe(
+        usuario="Usuario a encarcelar", minutos="Duracion en minutos (default: 10)"
+    )
     @app_commands.default_permissions(manage_guild=True)
-    async def slash_jail(self, interaction: discord.Interaction, usuario: discord.User, minutos: int = 10):
+    async def slash_jail(
+        self, interaction: discord.Interaction, usuario: discord.User, minutos: int = 10
+    ):
         await self._jail_impl(interaction, usuario, minutos)
 
     @app_commands.command(name="unjail", description="(Admin) Libera a un usuario de prision")
@@ -2837,17 +2959,39 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
         await self._unjail_impl(interaction, usuario)
 
     @app_commands.command(name="addmoney", description="(Owner) Añade/quita almas a un usuario")
-    @app_commands.describe(usuario="Usuario objetivo", monto="Cantidad (negativo para quitar)", destino="wallet o bank")
-    @app_commands.choices(destino=[
-        app_commands.Choice(name="Mano (wallet)", value="wallet"),
-        app_commands.Choice(name="Banco (bank)", value="bank"),
-    ])
-    async def slash_addmoney(self, interaction: discord.Interaction, usuario: discord.User, monto: int, destino: app_commands.Choice[str] = None):
-        await self._addmoney_impl(interaction, usuario, monto, destino.value if destino else "wallet")
+    @app_commands.describe(
+        usuario="Usuario objetivo", monto="Cantidad (negativo para quitar)", destino="wallet o bank"
+    )
+    @app_commands.choices(
+        destino=[
+            app_commands.Choice(name="Mano (wallet)", value="wallet"),
+            app_commands.Choice(name="Banco (bank)", value="bank"),
+        ]
+    )
+    async def slash_addmoney(
+        self,
+        interaction: discord.Interaction,
+        usuario: discord.User,
+        monto: int,
+        destino: app_commands.Choice[str] = None,
+    ):
+        await self._addmoney_impl(
+            interaction, usuario, monto, destino.value if destino else "wallet"
+        )
 
-    @app_commands.command(name="setmoney", description="(Owner) Fija el balance exacto de un usuario")
-    @app_commands.describe(usuario="Usuario objetivo", wallet="Saldo en mano", bank="Saldo en banco (opcional)")
-    async def slash_setmoney(self, interaction: discord.Interaction, usuario: discord.User, wallet: int, bank: int = None):
+    @app_commands.command(
+        name="setmoney", description="(Owner) Fija el balance exacto de un usuario"
+    )
+    @app_commands.describe(
+        usuario="Usuario objetivo", wallet="Saldo en mano", bank="Saldo en banco (opcional)"
+    )
+    async def slash_setmoney(
+        self,
+        interaction: discord.Interaction,
+        usuario: discord.User,
+        wallet: int,
+        bank: int | None = None,
+    ):
         await self._setmoney_impl(interaction, usuario, wallet, bank)
 
     # --------------------------------------------------------------------------
@@ -2863,9 +3007,13 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
                 f"Usa `{ctx.prefix}help {ctx.command.name}` si no te acuerdas de cómo va la jugada."
             )
         elif isinstance(error, commands.MemberNotFound):
-            await ctx.reply("🔍 Mmm... no pude ubicar a ese vecino en el barrio. Asegúrate de mencionarlo con `@` o usar su ID correcto.")
+            await ctx.reply(
+                "🔍 Mmm... no pude ubicar a ese vecino en el barrio. Asegúrate de mencionarlo con `@` o usar su ID correcto."
+            )
         elif isinstance(error, commands.BadArgument):
-            await ctx.reply("❌ Esos datos no me cuadran nada, amigo. Revisa bien los números o las opciones que pusiste.")
+            await ctx.reply(
+                "❌ Esos datos no me cuadran nada, amigo. Revisa bien los números o las opciones que pusiste."
+            )
         else:
             print(f"[IVY ECONOMY ERROR] Excepción no controlada en {ctx.command}: {error}")
             raise error

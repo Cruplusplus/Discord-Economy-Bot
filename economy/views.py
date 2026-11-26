@@ -44,12 +44,16 @@ class SoulDropView(discord.ui.View):
     @discord.ui.button(label="💎 ¡Reclamar Alijo!", style=discord.ButtonStyle.success, emoji="🪙")
     async def claim_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         if self.claimed:
-            await interaction.response.send_message("❌ ¡Demasiado tarde, chacho! Ya se llevaron estas almas.", ephemeral=True)
+            await interaction.response.send_message(
+                "❌ ¡Demasiado tarde, chacho! Ya se llevaron estas almas.", ephemeral=True
+            )
             return
 
         async with self.cog.db.lock:
             if self.claimed:
-                await interaction.response.send_message("❌ ¡Demasiado tarde, chacho! Ya se llevaron estas almas.", ephemeral=True)
+                await interaction.response.send_message(
+                    "❌ ¡Demasiado tarde, chacho! Ya se llevaron estas almas.", ephemeral=True
+                )
                 return
             self.claimed = True
             button.disabled = True
@@ -60,18 +64,21 @@ class SoulDropView(discord.ui.View):
             kudzu_until = buffs.get("kudzu_until", 0.0)
             kudzu_bonus = 0
             if kudzu_until > time.time():
-                kudzu_bonus = int(round(self.amount * KUDZU_DROP_BONUS_PERCENT))
+                kudzu_bonus = round(self.amount * KUDZU_DROP_BONUS_PERCENT)
 
             total_reward = self.amount + kudzu_bonus
             user_data["wallet"] += total_reward
             await self.cog.db.save()
 
-        self._log.info("Alijo de almas reclamado", extra={
-            "user_id": interaction.user.id,
-            "base_amount": self.amount,
-            "kudzu_bonus": kudzu_bonus,
-            "total_reward": total_reward,
-        })
+        self._log.info(
+            "Alijo de almas reclamado",
+            extra={
+                "user_id": interaction.user.id,
+                "base_amount": self.amount,
+                "kudzu_bonus": kudzu_bonus,
+                "total_reward": total_reward,
+            },
+        )
 
         desc = (
             f"¡Rápido como una gárgola en picada! **{interaction.user.mention}** se abalanzó sobre el alijo "
@@ -84,25 +91,29 @@ class SoulDropView(discord.ui.View):
         embed = discord.Embed(
             title="⚡ ¡ALIJO RECLAMADO A TODA VELOCIDAD!",
             description=desc,
-            color=discord.Color.green()
+            color=discord.Color.green(),
         )
         embed.set_thumbnail(url=interaction.user.display_avatar.url)
         embed.set_footer(text="Carlos always says: the fastest hands get the warmest mofongo.")
         await interaction.response.edit_message(embed=embed, view=self)
 
         if interaction.guild:
-            await self.cog.actualizar_rol_millonario(interaction.guild, announce_channel=interaction.channel)
+            await self.cog.actualizar_rol_millonario(
+                interaction.guild, announce_channel=interaction.channel
+            )
 
     async def on_timeout(self):
         if not self.claimed:
-            self._log.info("Alijo de almas desvanecido (timeout)", extra={"base_amount": self.amount})
+            self._log.info(
+                "Alijo de almas desvanecido (timeout)", extra={"base_amount": self.amount}
+            )
             for item in self.children:
                 item.disabled = True
             if self.message:
                 embed = discord.Embed(
                     title="💨 Alijo de Almas Desvanecido",
                     description="El viento de Spanish Harlem sopló fuerte y las almas sueltas se dispersaron entre los callejones. ¡Nadie fue lo bastante rápido!",
-                    color=discord.Color.dark_grey()
+                    color=discord.Color.dark_grey(),
                 )
                 embed.set_footer(text="Las gárgolas no esperan a los dormilones.")
                 try:
@@ -133,18 +144,22 @@ class RaidBossView(discord.ui.View):
     @discord.ui.button(label="⚔️ ¡Golpear!", style=discord.ButtonStyle.danger, emoji="💥")
     async def attack_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         if self.defeated:
-            await interaction.response.send_message("❌ ¡El matón ya fue noqueado contra el pavimento!", ephemeral=True)
+            await interaction.response.send_message(
+                "❌ ¡El matón ya fue noqueado contra el pavimento!", ephemeral=True
+            )
             return
 
         async with self.cog.db.lock:
             if self.defeated:
-                await interaction.response.send_message("❌ ¡El matón ya fue noqueado contra el pavimento!", ephemeral=True)
+                await interaction.response.send_message(
+                    "❌ ¡El matón ya fue noqueado contra el pavimento!", ephemeral=True
+                )
                 return
 
             if interaction.user.id in self.attacker_ids:
                 await interaction.response.send_message(
                     "❌ ¡Ey, chacho, ya diste tu golpe! Deja que otro vecino del barrio le dé una tunda para rematarlo.",
-                    ephemeral=True
+                    ephemeral=True,
                 )
                 return
 
@@ -163,13 +178,18 @@ class RaidBossView(discord.ui.View):
                 await self.cog.db.save()
 
         if self.defeated:
-            self._log.info("Raid completado - Patrulla derrotada", extra={
-                "final_attacker_id": interaction.user.id,
-                "participants": len(self.attackers),
-                "payout_per_participant": payout,
-                "total_pool": RAID_TOTAL_POOL,
-            })
-            heroes_str = "\n".join(f"• {u.mention}: **+{payout:,} {CURRENCY_SYMBOL}**" for u in self.attackers)
+            self._log.info(
+                "Raid completado - Patrulla derrotada",
+                extra={
+                    "final_attacker_id": interaction.user.id,
+                    "participants": len(self.attackers),
+                    "payout_per_participant": payout,
+                    "total_pool": RAID_TOTAL_POOL,
+                },
+            )
+            heroes_str = "\n".join(
+                f"• {u.mention}: **+{payout:,} {CURRENCY_SYMBOL}**" for u in self.attackers
+            )
             embed = discord.Embed(
                 title="🏆 ¡PATRULLA DERROTADA! ¡EL BARRIO SE RESPETA!",
                 description=(
@@ -177,19 +197,26 @@ class RaidBossView(discord.ui.View):
                     f"💰 **Botín repartido equitativamente:** **{RAID_TOTAL_POOL:,} {CURRENCY_SYMBOL}**\n\n"
                     f"**🛡️ Vecinos justicieros:**\n{heroes_str}"
                 ),
-                color=discord.Color.green()
+                color=discord.Color.green(),
             )
-            embed.set_footer(text="Ivy dice: ¡Nadie se mete con Spanish Harlem mientras estemos unidos!")
+            embed.set_footer(
+                text="Ivy dice: ¡Nadie se mete con Spanish Harlem mientras estemos unidos!"
+            )
             await interaction.response.edit_message(embed=embed, view=self)
 
             if interaction.guild:
-                await self.cog.actualizar_rol_millonario(interaction.guild, announce_channel=interaction.channel)
+                await self.cog.actualizar_rol_millonario(
+                    interaction.guild, announce_channel=interaction.channel
+                )
         else:
-            self._log.debug("Raid - Golpe registrado", extra={
-                "attacker_id": interaction.user.id,
-                "participants": len(self.attackers),
-                "remaining_hp": self.current_hp,
-            })
+            self._log.debug(
+                "Raid - Golpe registrado",
+                extra={
+                    "attacker_id": interaction.user.id,
+                    "participants": len(self.attackers),
+                    "remaining_hp": self.current_hp,
+                },
+            )
             embed = discord.Embed(
                 title="🚨 ¡EMBOSCADA DEL SINDICATO MENDOZA!",
                 description=(
@@ -200,14 +227,17 @@ class RaidBossView(discord.ui.View):
                     f"👥 **Vecinos al ataque ({len(self.attackers)}/{self.max_hp}):** "
                     f"{', '.join(u.display_name for u in self.attackers)}"
                 ),
-                color=discord.Color.orange()
+                color=discord.Color.orange(),
             )
             embed.set_footer(text="¡Se necesitan vecinos distintos para rodearlos y acabarlos!")
             await interaction.response.edit_message(embed=embed, view=self)
 
     async def on_timeout(self):
         if not self.defeated:
-            self._log.info("Raid fallido - Patrulla escapó (timeout)", extra={"participants": len(self.attackers), "remaining_hp": self.current_hp})
+            self._log.info(
+                "Raid fallido - Patrulla escapó (timeout)",
+                extra={"participants": len(self.attackers), "remaining_hp": self.current_hp},
+            )
             for item in self.children:
                 item.disabled = True
             if self.message:
@@ -217,9 +247,11 @@ class RaidBossView(discord.ui.View):
                         "Los matones se rieron en sus caras y se perdieron en las sombras con el botín. "
                         "Les faltó coordinación barrial para bajarlos a tiempo."
                     ),
-                    color=discord.Color.dark_grey()
+                    color=discord.Color.dark_grey(),
                 )
-                embed.set_footer(text="Carlos always says: if you don't stick together, you lose together.")
+                embed.set_footer(
+                    text="Carlos always says: if you don't stick together, you lose together."
+                )
                 try:
                     await self.message.edit(embed=embed, view=self)
                 except Exception:
@@ -236,15 +268,21 @@ class RiskRouletteView(discord.ui.View):
         self.message: discord.Message | None = None
         self._log = logging.getLogger("economy.views.riskroulette")
 
-    @discord.ui.button(label="🎲 ¡Aceptar el Desafío!", style=discord.ButtonStyle.primary, emoji="🔥")
+    @discord.ui.button(
+        label="🎲 ¡Aceptar el Desafío!", style=discord.ButtonStyle.primary, emoji="🔥"
+    )
     async def risk_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         if self.claimed:
-            await interaction.response.send_message("❌ ¡Alguien ya tomó este riesgo antes que tú!", ephemeral=True)
+            await interaction.response.send_message(
+                "❌ ¡Alguien ya tomó este riesgo antes que tú!", ephemeral=True
+            )
             return
 
         async with self.cog.db.lock:
             if self.claimed:
-                await interaction.response.send_message("❌ ¡Alguien ya tomó este riesgo antes que tú!", ephemeral=True)
+                await interaction.response.send_message(
+                    "❌ ¡Alguien ya tomó este riesgo antes que tú!", ephemeral=True
+                )
                 return
             self.claimed = True
             button.disabled = True
@@ -258,11 +296,14 @@ class RiskRouletteView(discord.ui.View):
                 user_data["wallet"] += ROULETTE_WIN_AMOUNT
                 await self.cog.db.save()
 
-                self._log.info("Risk Roulette - Victoria", extra={
-                    "user_id": interaction.user.id,
-                    "prize": ROULETTE_WIN_AMOUNT,
-                    "new_wallet": user_data["wallet"],
-                })
+                self._log.info(
+                    "Risk Roulette - Victoria",
+                    extra={
+                        "user_id": interaction.user.id,
+                        "prize": ROULETTE_WIN_AMOUNT,
+                        "new_wallet": user_data["wallet"],
+                    },
+                )
 
                 embed = discord.Embed(
                     title="💎 ¡QUÉ AGALLAS! ¡VICTORIA TOTAL!",
@@ -271,18 +312,25 @@ class RiskRouletteView(discord.ui.View):
                         f"🎁 **Premio de las alturas:** **+{ROULETTE_WIN_AMOUNT:,} {CURRENCY_NAME} {CURRENCY_SYMBOL}**\n"
                         f"Billetera actual: **{user_data['wallet']:,} {CURRENCY_SYMBOL}**"
                     ),
-                    color=discord.Color.gold()
+                    color=discord.Color.gold(),
                 )
                 embed.set_thumbnail(url=interaction.user.display_avatar.url)
-                embed.set_footer(text="Ivy dice: ¡A los valientes la suerte les sonríe desde las cornisas!")
+                embed.set_footer(
+                    text="Ivy dice: ¡A los valientes la suerte les sonríe desde las cornisas!"
+                )
             else:
-                user_data["prison_until"] = max(user_data.get("prison_until", 0.0), now + ROULETTE_PRISON_DURATION)
+                user_data["prison_until"] = max(
+                    user_data.get("prison_until", 0.0), now + ROULETTE_PRISON_DURATION
+                )
                 await self.cog.db.save()
 
-                self._log.info("Risk Roulette - Derrota (cárcel)", extra={
-                    "user_id": interaction.user.id,
-                    "prison_duration": ROULETTE_PRISON_DURATION,
-                })
+                self._log.info(
+                    "Risk Roulette - Derrota (cárcel)",
+                    extra={
+                        "user_id": interaction.user.id,
+                        "prison_duration": ROULETTE_PRISON_DURATION,
+                    },
+                )
 
                 minutos = ROULETTE_PRISON_DURATION // 60
                 embed = discord.Embed(
@@ -291,7 +339,7 @@ class RiskRouletteView(discord.ui.View):
                         f"Ay, chacho... **{interaction.user.mention}** se hizo el vivo y lo agarró la patrulla en plena movida.\n\n"
                         f"⛓️ **Condena:** Al calabozo por **{minutos} minutos** tras las rejas sin poder patrullar ni chambear."
                     ),
-                    color=discord.Color.red()
+                    color=discord.Color.red(),
                 )
                 embed.set_thumbnail(url=interaction.user.display_avatar.url)
                 embed.set_footer(text="Ivy no rescata rateros atrapados in fraganti.")
@@ -299,7 +347,9 @@ class RiskRouletteView(discord.ui.View):
         await interaction.response.edit_message(embed=embed, view=self)
 
         if won and interaction.guild:
-            await self.cog.actualizar_rol_millonario(interaction.guild, announce_channel=interaction.channel)
+            await self.cog.actualizar_rol_millonario(
+                interaction.guild, announce_channel=interaction.channel
+            )
 
     async def on_timeout(self):
         if not self.claimed:
@@ -310,7 +360,7 @@ class RiskRouletteView(discord.ui.View):
                 embed = discord.Embed(
                     title="🐔 Desafío Expirado: Nadie se Animó",
                     description="Ivy se quedó esperando en la cornisa con una sonrisa burlona... Parece que a todo el barrio le temblaron las piernas hoy.",
-                    color=discord.Color.dark_grey()
+                    color=discord.Color.dark_grey(),
                 )
                 embed.set_footer(text="Mucho ruido y pocas nueces en Spanish Harlem.")
                 try:
@@ -331,22 +381,28 @@ class RobinHoodView(discord.ui.View):
         self.message: discord.Message | None = None
         self._log = logging.getLogger("economy.views.robinhood")
 
-    @discord.ui.button(label="💰 ¡Agarrar Bolsa Redistribuida!", style=discord.ButtonStyle.success, emoji="🏹")
+    @discord.ui.button(
+        label="💰 ¡Agarrar Bolsa Redistribuida!", style=discord.ButtonStyle.success, emoji="🏹"
+    )
     async def claim_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id == self.target_member.id:
             await interaction.response.send_message(
                 "❌ ¡Oye, chacho descarado! Este es el impuesto a la opulencia que te cobramos. ¡No puedes autorecuperártelo!",
-                ephemeral=True
+                ephemeral=True,
             )
             return
 
         if self.claimed:
-            await interaction.response.send_message("❌ ¡Otro vecino ya se llevó esta bolsa de almas!", ephemeral=True)
+            await interaction.response.send_message(
+                "❌ ¡Otro vecino ya se llevó esta bolsa de almas!", ephemeral=True
+            )
             return
 
         async with self.cog.db.lock:
             if self.claimed:
-                await interaction.response.send_message("❌ ¡Otro vecino ya se llevó esta bolsa de almas!", ephemeral=True)
+                await interaction.response.send_message(
+                    "❌ ¡Otro vecino ya se llevó esta bolsa de almas!", ephemeral=True
+                )
                 return
             self.claimed = True
             button.disabled = True
@@ -356,12 +412,15 @@ class RobinHoodView(discord.ui.View):
             user_data["wallet"] += self.amount
             await self.cog.db.save()
 
-        self._log.info("Robin Hood - Bolsa redistribuida reclamada", extra={
-            "claimer_id": interaction.user.id,
-            "target_id": self.target_member.id,
-            "amount": self.amount,
-            "new_wallet": user_data["wallet"],
-        })
+        self._log.info(
+            "Robin Hood - Bolsa redistribuida reclamada",
+            extra={
+                "claimer_id": interaction.user.id,
+                "target_id": self.target_member.id,
+                "amount": self.amount,
+                "new_wallet": user_data["wallet"],
+            },
+        )
 
         embed = discord.Embed(
             title="🏹 ¡JUSTICIA CALLEJERA AL ESTILO IVY!",
@@ -370,21 +429,26 @@ class RobinHoodView(discord.ui.View):
                 f"**+{self.amount:,} {CURRENCY_NAME} {CURRENCY_SYMBOL}** que Ivy le 'redistribuyó' a **{self.target_member.display_name}**.\n\n"
                 f"Billetera actual: **{user_data['wallet']:,} {CURRENCY_SYMBOL}**"
             ),
-            color=discord.Color.green()
+            color=discord.Color.green(),
         )
         embed.set_thumbnail(url=interaction.user.display_avatar.url)
         embed.set_footer(text="Ivy dice: En Spanish Harlem la riqueza circula, no se estanca.")
         await interaction.response.edit_message(embed=embed, view=self)
 
         if interaction.guild:
-            await self.cog.actualizar_rol_millonario(interaction.guild, announce_channel=interaction.channel)
+            await self.cog.actualizar_rol_millonario(
+                interaction.guild, announce_channel=interaction.channel
+            )
 
     async def on_timeout(self):
         if not self.claimed:
-            self._log.info("Robin Hood - Bolsa redistribuida no reclamada (timeout)", extra={
-                "target_id": self.target_member.id,
-                "amount": self.amount,
-            })
+            self._log.info(
+                "Robin Hood - Bolsa redistribuida no reclamada (timeout)",
+                extra={
+                    "target_id": self.target_member.id,
+                    "amount": self.amount,
+                },
+            )
             for item in self.children:
                 item.disabled = True
             if self.message:
@@ -394,7 +458,7 @@ class RobinHoodView(discord.ui.View):
                         f"Nadie recogió la bolsa con {self.amount:,} {CURRENCY_SYMBOL} que se le cobraron a "
                         f"{self.target_member.display_name}. Ivy se las llevó para alimentar a las palomas de la catedral."
                     ),
-                    color=discord.Color.dark_grey()
+                    color=discord.Color.dark_grey(),
                 )
                 try:
                     await self.message.edit(embed=embed, view=self)
@@ -412,17 +476,21 @@ class RewindView(discord.ui.View):
         self.amount = amount
         self.used = False
 
-    @discord.ui.button(label="⏳ Rebobinar Tiempo (Paradox)", style=discord.ButtonStyle.primary, emoji="⌛")
+    @discord.ui.button(
+        label="⏳ Rebobinar Tiempo (Paradox)", style=discord.ButtonStyle.primary, emoji="⌛"
+    )
     async def rewind_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.user_id:
             await interaction.response.send_message(
                 "❌ Solo quien sufrió la derrota puede activar su propio Cronómetro de Paradox.",
-                ephemeral=True
+                ephemeral=True,
             )
             return
 
         if self.used:
-            await interaction.response.send_message("❌ Esta tirada ya fue rebobinada.", ephemeral=True)
+            await interaction.response.send_message(
+                "❌ Esta tirada ya fue rebobinada.", ephemeral=True
+            )
             return
 
         ok, result = await self.cog.execute_temporal_rewind(self.user_id)
@@ -446,7 +514,7 @@ class RewindView(discord.ui.View):
                 f"💵 **Tus almas han regresado a tu bolsillo:** **{result['wallet']:,} {CURRENCY_SYMBOL}**\n\n"
                 f"*«Carlos always says: el tiempo no vuelve atrás... a menos que Paradox ande cerca jugando con sus relojes.»*"
             ),
-            color=discord.Color.purple()
+            color=discord.Color.purple(),
         )
         embed.set_footer(text="El Cronómetro de Paradox se ha consumido en la fractura temporal.")
         await interaction.followup.send(embed=embed)

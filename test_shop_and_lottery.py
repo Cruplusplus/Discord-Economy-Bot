@@ -38,7 +38,9 @@ class TestShopAndLottery(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.test_dir = tempfile.mkdtemp()
         self.db_file = os.path.join(self.test_dir, "test_stats.db")  # .db extension for SQLite
-        self.json_file = os.path.join(self.test_dir, "stats.json")  # Separate JSON path (non-existent)
+        self.json_file = os.path.join(
+            self.test_dir, "stats.json"
+        )  # Separate JSON path (non-existent)
         self.db = DataManager(self.db_file)
         self.db._json_path = self.json_file  # Point to non-existent JSON to skip migration
         await self.db.initialize()
@@ -135,7 +137,7 @@ class TestShopAndLottery(unittest.IsolatedAsyncioTestCase):
 
         bonus = 0
         if buffs.get("kudzu_until", 0.0) > now:
-            bonus = int(round(base_drop * KUDZU_DROP_BONUS_PERCENT))
+            bonus = round(base_drop * KUDZU_DROP_BONUS_PERCENT)
 
         self.assertEqual(bonus, 500)
         self.assertEqual(base_drop + bonus, 1500)
@@ -162,7 +164,7 @@ class TestShopAndLottery(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(victim_inv["stone_charm"], 0)
         self.assertEqual(victim["wallet"], 50000)  # No perdio dinero
-        self.assertEqual(robber["wallet"], 7000)   # Pago multa
+        self.assertEqual(robber["wallet"], 7000)  # Pago multa
         self.assertGreater(robber["prison_until"], now)
 
     async def test_bail_bond_auto_freedom(self):
@@ -208,7 +210,7 @@ class TestShopAndLottery(unittest.IsolatedAsyncioTestCase):
         stolen = 20000  # 20%
         if magnate_inv.get("stone_charm", 0) > 0:
             magnate_inv["stone_charm"] -= 1
-            stolen = int(round(stolen * 0.5))
+            stolen = round(stolen * 0.5)
 
         self.assertEqual(stolen, 10000)  # Absorbió 50%
         self.assertEqual(magnate_inv["stone_charm"], 0)
@@ -228,7 +230,9 @@ class TestShopAndLottery(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(pot, LOTTERY_BASE_JACKPOT + (half_tix * LOTTERY_TICKET_PRICE))
 
         # Intenta comprar más de los permitidos por el tope anti-monopolio
-        ok, msg, user_tix, pot = await self.lottery.buy_tickets(900, LOTTERY_MAX_TICKETS_PER_USER + 1)
+        ok, msg, user_tix, pot = await self.lottery.buy_tickets(
+            900, LOTTERY_MAX_TICKETS_PER_USER + 1
+        )
         self.assertFalse(ok)
         self.assertIn("anti-monopolio", msg.lower())
 
@@ -256,7 +260,7 @@ class TestShopAndLottery(unittest.IsolatedAsyncioTestCase):
         pot_before = lottery_data["jackpot"]
         self.assertEqual(pot_before, LOTTERY_BASE_JACKPOT + (5 * LOTTERY_TICKET_PRICE))
 
-        won, winner_member, jackpot_won, total_tix = await self.lottery.draw_lottery(guild=None)
+        won, _winner_member, jackpot_won, total_tix = await self.lottery.draw_lottery(guild=None)
         self.assertTrue(won)
         self.assertEqual(total_tix, 5)
         self.assertEqual(jackpot_won, pot_before)
@@ -395,6 +399,7 @@ class TestShopAndLottery(unittest.IsolatedAsyncioTestCase):
 
         # 6. Prueba de comando %usar paradox sin tiradas previas (no debe congelar ni bloquear el lock de db)
         from unittest.mock import AsyncMock, MagicMock
+
         user2 = await self.db.get_user_data(2002)
         inv2 = get_user_inventory(user2)
         inv2["paradox_chrono"] = 1
@@ -407,7 +412,9 @@ class TestShopAndLottery(unittest.IsolatedAsyncioTestCase):
 
         # No debe bloquearse ni colgar el loop
         await cog.usar.callback(cog, ctx_mock, "paradox")
-        ctx_mock.reply.assert_called_with("❌ No tienes ninguna tirada reciente registrada para rebobinar.")
+        ctx_mock.reply.assert_called_with(
+            "❌ No tienes ninguna tirada reciente registrada para rebobinar."
+        )
         self.assertFalse(cog.db.lock.locked(), "El lock de la base de datos debe quedar liberado")
 
     async def test_coin_and_ruleta_commands_execution(self):
@@ -465,7 +472,7 @@ class TestShopAndLottery(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("_lottery", all_users)
         self.assertIn("4001", all_users)
         self.assertIn("4002", all_users)
-        for k in all_users.keys():
+        for k in all_users:
             self.assertTrue(k.isdigit())
 
         # Test rank command directly
@@ -499,7 +506,19 @@ class TestShopAndLottery(unittest.IsolatedAsyncioTestCase):
         await la_creatura_bot.paw.callback(ctx, None)
         ctx.send.assert_called()
         sent_url = ctx.send.call_args[0][0]
-        self.assertTrue(any(ext in sent_url for ext in [".gif", "giphy", "tenor", "discordapp.com", "cdn.discordapp.com", "brave.com"]))
+        self.assertTrue(
+            any(
+                ext in sent_url
+                for ext in [
+                    ".gif",
+                    "giphy",
+                    "tenor",
+                    "discordapp.com",
+                    "cdn.discordapp.com",
+                    "brave.com",
+                ]
+            )
+        )
 
         # 2. Auto-mención (miembro.id == ctx.author.id, no debe generar embed a sí mismo)
         self_member = MagicMock()

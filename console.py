@@ -37,7 +37,7 @@ class ConsoleManager:
             target=self._stdin_worker,
             args=(self._queue, loop),
             name="IvyConsoleReader",
-            daemon=True
+            daemon=True,
         )
         self._thread.start()
         self._task = asyncio.create_task(self._process_commands_loop())
@@ -59,7 +59,7 @@ class ConsoleManager:
                 clean_line = line.strip()
                 if clean_line:
                     loop.call_soon_threadsafe(queue.put_nowait, clean_line)
-            except Exception:
+            except (OSError, ValueError):
                 break
 
     async def _process_commands_loop(self) -> None:
@@ -70,7 +70,7 @@ class ConsoleManager:
                 await self._execute_line(line)
             except asyncio.CancelledError:
                 break
-            except Exception as e:
+            except (RuntimeError, ValueError, TypeError) as e:
                 print(f"[CONSOLA ERROR] Excepcion no controlada: {e}")
 
     async def _execute_line(self, line: str) -> None:
@@ -118,10 +118,12 @@ class ConsoleManager:
         if handler:
             try:
                 await handler(args)
-            except Exception as e:
+            except (RuntimeError, ValueError, TypeError, AttributeError) as e:
                 print(f"[CONSOLA ERROR] Error al ejecutar '{cmd}': {e}")
         else:
-            print(f"[CONSOLA] Comando desconocido: '{cmd}'. Escribe 'help' para ver la lista de comandos.")
+            print(
+                f"[CONSOLA] Comando desconocido: '{cmd}'. Escribe 'help' para ver la lista de comandos."
+            )
 
     # --------------------------------------------------------------------------
     #                       IMPLEMENTACION DE COMANDOS CLI
@@ -165,7 +167,7 @@ class ConsoleManager:
             if canal is None:
                 try:
                     canal = await self.bot.fetch_channel(c_id)
-                except Exception:
+                except (discord.NotFound, discord.HTTPException):
                     canal = None
         else:
             # Buscar por nombre en los servidores disponibles
@@ -184,7 +186,7 @@ class ConsoleManager:
             print(f"[CONSOLA] Mensaje enviado a #{canal.name} ({guild_name}): {mensaje}")
         except discord.Forbidden:
             print(f"[CONSOLA] Error: Sin permisos para escribir en #{canal.name}.")
-        except Exception as e:
+        except (discord.HTTPException, discord.InvalidData) as e:
             print(f"[CONSOLA] Error al enviar mensaje: {e}")
 
     async def _cmd_addmoney(self, args: list[str]) -> None:
@@ -222,7 +224,9 @@ class ConsoleManager:
                 await economy_cog.actualizar_rol_millonario(g)
 
         sign = "+" if amount >= 0 else ""
-        print(f"[CONSOLA] Balance actualizado para {user_id}: {sign}{amount:,} en {target_type}. Saldo actual: {new_val:,}")
+        print(
+            f"[CONSOLA] Balance actualizado para {user_id}: {sign}{amount:,} en {target_type}. Saldo actual: {new_val:,}"
+        )
 
     async def _cmd_setmoney(self, args: list[str]) -> None:
         """Fija la cantidad exacta en mano y/o banco para un usuario."""
@@ -254,7 +258,9 @@ class ConsoleManager:
             if g.get_member(user_id):
                 await economy_cog.actualizar_rol_millonario(g)
 
-        print(f"[CONSOLA] Valores fijados para {user_id}: Wallet: {user_proxy['wallet']:,} | Bank: {user_proxy['bank']:,}")
+        print(
+            f"[CONSOLA] Valores fijados para {user_id}: Wallet: {user_proxy['wallet']:,} | Bank: {user_proxy['bank']:,}"
+        )
 
     async def _cmd_balance(self, args: list[str]) -> None:
         """Muestra el saldo y situacion penal de un usuario."""
@@ -289,7 +295,7 @@ class ConsoleManager:
 - En mano (Wallet) : {wallet:,}
 - En cornisa (Bank): {bank:,}
 - Total acumulado  : {wallet + bank:,}
-- Estado penal     : {'EN PRISION (' + economy_cog._format_time(rem) + ')' if in_prison else 'Libre'}
+- Estado penal     : {"EN PRISION (" + economy_cog._format_time(rem) + ")" if in_prison else "Libre"}
 --------------------------------------------------""")
 
     async def _cmd_unjail(self, args: list[str]) -> None:
@@ -349,6 +355,7 @@ class ConsoleManager:
             return
 
         from economy.config import ECONOMY_CHANNEL_ID
+
         if not ECONOMY_CHANNEL_ID:
             print("[CONSOLA] ECONOMY_CHANNEL_ID no esta configurado en el .env.")
             return
@@ -357,7 +364,7 @@ class ConsoleManager:
         if channel is None:
             try:
                 channel = await self.bot.fetch_channel(ECONOMY_CHANNEL_ID)
-            except Exception as e:
+            except (discord.NotFound, discord.HTTPException) as e:
                 print(f"[CONSOLA] No se pudo obtener el canal de economia: {e}")
                 return
 
@@ -396,6 +403,7 @@ class ConsoleManager:
                 EVENT_WEIGHT_ROULETTE,
                 EVENT_WEIGHT_TRIVIA,
             )
+
             eventos_test = [
                 economy_cog._trigger_soul_drop,
                 economy_cog._trigger_trivia,
@@ -405,8 +413,12 @@ class ConsoleManager:
                 economy_cog._trigger_robin_hood,
             ]
             pesos_test = [
-                EVENT_WEIGHT_DROP, EVENT_WEIGHT_TRIVIA, EVENT_WEIGHT_RAID,
-                EVENT_WEIGHT_ROULETTE, EVENT_WEIGHT_BOOST, EVENT_WEIGHT_ROBIN_HOOD,
+                EVENT_WEIGHT_DROP,
+                EVENT_WEIGHT_TRIVIA,
+                EVENT_WEIGHT_RAID,
+                EVENT_WEIGHT_ROULETTE,
+                EVENT_WEIGHT_BOOST,
+                EVENT_WEIGHT_ROBIN_HOOD,
             ]
             handler = random.choices(eventos_test, weights=pesos_test, k=1)[0]
             await handler(channel)
@@ -440,7 +452,9 @@ class ConsoleManager:
                     prob = (qty / total_tickets * 100) if total_tickets > 0 else 0
                     print(f"  • Usuario {uid}: {qty} ticket(s) ({prob:.1f}%)")
             if last_winner:
-                print(f"- Ultimo Ganador: Usuario {last_winner['user_id']} ({last_winner['amount']:,} almas)")
+                print(
+                    f"- Ultimo Ganador: Usuario {last_winner['user_id']} ({last_winner['amount']:,} almas)"
+                )
             print()
 
     async def _cmd_migrate(self, args: list[str]) -> None:
@@ -459,11 +473,12 @@ class ConsoleManager:
 
         try:
             from economy.schema import migrate_from_json
+
             await migrate_from_json(db_path, json_path)
             print("[CONSOLA] Migracion completada exitosamente.")
         except FileNotFoundError:
             print(f"[CONSOLA] Error: No se encontro el archivo JSON: {json_path}")
-        except Exception as e:
+        except (OSError, ValueError, RuntimeError) as e:
             print(f"[CONSOLA] Error durante la migracion: {e}")
 
     async def _cmd_servers(self, args: list[str]) -> None:
@@ -497,4 +512,5 @@ class ConsoleManager:
         self.stop()
         # Invocar la rutina de apagado del bot
         from la_creatura_bot import shutdown_bot
+
         await shutdown_bot()
