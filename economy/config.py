@@ -143,7 +143,7 @@ LOTTERY_DRAW_TIME: datetime.time = _parse_time_env("LOTTERY_DRAW_TIME", 21, 0)
 LOTTERY_DRAW_DAY: int = _parse_int_env("LOTTERY_DRAW_DAY", 6)
 
 # --- Archivo de Persistencia ---
-DATA_FILE_PATH: str = os.getenv("DATA_FILE_PATH", "stats.json")
+DATA_FILE_PATH: str = os.getenv("DATA_FILE_PATH", "stats.db")
 
 # --- Eventos Aleatorios y Automaticos de Ivy ---
 EVENT_MIN_INTERVAL_MINUTES: int = _parse_int_env("EVENT_MIN_INTERVAL_MINUTES", 15)

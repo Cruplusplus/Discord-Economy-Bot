@@ -267,7 +267,13 @@ class DataManager:
         self.file_path = file_path
         self._lock = _ReentrantLock()
         self._initialized = False
-        self._json_path = file_path  # Para migración inicial
+        # Para migración inicial: usar el archivo .json correspondiente si existe
+        if file_path.endswith('.db'):
+            self._json_path = file_path[:-3] + '.json'
+        elif file_path.endswith('.json'):
+            self._json_path = file_path
+        else:
+            self._json_path = file_path + '.json'
         self._dirty_proxies: Set[UserDataProxy] = set()
 
     def _register_dirty(self, proxy: UserDataProxy):

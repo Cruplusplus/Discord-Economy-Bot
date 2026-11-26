@@ -105,6 +105,7 @@ class ConsoleManager:
             "eventtest": self._cmd_event,
             "lottery": self._cmd_lottery,
             "pozo": self._cmd_lottery,
+            "migrate": self._cmd_migrate,
             "servers": self._cmd_servers,
             "guilds": self._cmd_servers,
             "channels": self._cmd_channels,
@@ -138,6 +139,7 @@ class ConsoleManager:
 - unjail <user_id>                   : Libera a un usuario de prision
 - jail <user_id> [minutos]           : Envia a prision a un usuario
 - lottery [info|draw]                : Consulta estado del pozo o ejecuta el sorteo
+- migrate [json_path]                : Migra datos desde JSON legacy a SQLite
 - event <drop|trivia|raid|etc>       : Dispara un evento en el canal oficial
 - servers                            : Lista los servidores donde esta el bot
 - channels [guild_id]                : Lista los canales de texto disponibles
@@ -435,6 +437,29 @@ class ConsoleManager:
             if last_winner:
                 print(f"- Ultimo Ganador: Usuario {last_winner['user_id']} ({last_winner['amount']:,} almas)")
             print()
+
+    async def _cmd_migrate(self, args: List[str]) -> None:
+        """Migra datos desde JSON legacy a la base de datos SQLite."""
+        economy_cog = self.bot.get_cog("Economy")
+        if not economy_cog:
+            print("[CONSOLA] Modulo de economia no disponible.")
+            return
+
+        # Path del JSON: usar el argumento o derivarlo del path de la BD
+        json_path = args[0] if args else economy_cog.db._json_path
+        db_path = economy_cog.db.file_path
+
+        print(f"[CONSOLA] Iniciando migracion desde: {json_path}")
+        print(f"[CONSOLA] Base de datos destino: {db_path}")
+
+        try:
+            from economy.schema import migrate_from_json
+            await migrate_from_json(db_path, json_path)
+            print("[CONSOLA] Migracion completada exitosamente.")
+        except FileNotFoundError:
+            print(f"[CONSOLA] Error: No se encontro el archivo JSON: {json_path}")
+        except Exception as e:
+            print(f"[CONSOLA] Error durante la migracion: {e}")
 
     async def _cmd_servers(self, args: List[str]) -> None:
         """Lista los servidores en los que participa el bot."""

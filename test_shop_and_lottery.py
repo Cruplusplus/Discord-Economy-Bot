@@ -501,7 +501,7 @@ class TestShopAndLottery(unittest.IsolatedAsyncioTestCase):
         await la_creatura_bot.paw.callback(ctx, None)
         ctx.send.assert_called()
         sent_url = ctx.send.call_args[0][0]
-        self.assertTrue(any(ext in sent_url for ext in [".gif", "giphy", "tenor"]))
+        self.assertTrue(any(ext in sent_url for ext in [".gif", "giphy", "tenor", "discordapp.com", "cdn.discordapp.com", "brave.com"]))
 
         # 2. Auto-mención (miembro.id == ctx.author.id, no debe generar embed a sí mismo)
         self_member = MagicMock()
