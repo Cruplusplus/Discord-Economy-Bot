@@ -1,5 +1,7 @@
 # 🗽 Ivy Discord Economy Bot
 
+**Versión:** `v1.1.0` · **Estado:** preparada para publicación
+
 Bot de Discord temático inspirado en **Ivy de Deadlock**, diseñado para gestionar un sistema integral de **economía, apuestas, duelos y eventos aleatorios periódicos** en tu servidor con **persistencia atómica en SQLite (WAL mode)**, cero números mágicos, **logging estructurado JSON**, **pipeline CI/CD**, y **comandos slash (app_commands)**, todo configurable mediante variables de entorno.
 
 ---
@@ -80,11 +82,11 @@ Discord Economy Bot/
 
 ---
 
-## ⚙️ Características Técnicas Avanzadas (Fase 1 Completada)
+## ⚙️ Características Técnicas Avanzadas (v1.1.0)
 
 ### 🗄️ Persistencia SQLite Profesional
 - **Engine:** `aiosqlite` con **WAL mode** para concurrencia lectora/escritora sin bloqueos
-- **Esquema normalizado:** 7 tablas (`users`, `inventory`, `buffs`, `stats`, `lottery`, `lottery_tickets`, `transactions`, `schema_version`)
+- **Esquema normalizado:** tablas de usuarios, inventario, buffs, estadísticas, lotería, transacciones, migraciones y cooldowns
 - **Migraciones versionadas:** v1 (esquema base) → v2 (tabla `last_loss` para Paradox Chrono)
 - **Migración automática legacy:** Al primer arranque, migra `stats.json` → `stats.db` si la BD está vacía
 - **API compatible:** `DataManager` mantiene la misma interfaz (`get_user_data`, `lock`, `save`) para código existente
@@ -101,12 +103,12 @@ Discord Economy Bot/
 # .github/workflows/ci.yml
 - Lint & Type Check: ruff + mypy
 - Unit Tests: pytest-asyncio (17 tests)
-- Build Check: Verifica inicio del bot + creación DB + esquema
+- Build Check: Inicializa SQLite sin credenciales y verifica creación de DB + esquema
 - Security Scan: bandit (opcional)
 ```
 
 ### ⚡ Comandos Slash (app_commands) - Fase 2.1
-Registrados 22 comandos slash en paralelo a los prefijos (`%`):
+Registrados 23 comandos slash en paralelo a los prefijos (`%`). Los comandos principales de economía ya comparten lógica con sus equivalentes de prefijo; los demás mantienen su registro para completar progresivamente la UX slash:
 
 | Slash Command | Prefijo Equivalente | Descripción |
 | :--- | :--- | :--- |
@@ -186,8 +188,11 @@ Registrados 22 comandos slash en paralelo a los prefijos (`%`):
    # Token de tu bot (OBLIGATORIO)
    DISCORD_TOKEN=tu_token_aqui
 
-   # Prefijo de comandos (por defecto: %)
-   BOT_PREFIX=%
+    # Prefijo de comandos (por defecto: %)
+    BOT_PREFIX=%
+
+    # ID del servidor para sincronización inmediata (0 = sincronización global)
+    SLASH_COMMAND_GUILD_ID=0
 
    # Tu ID de Discord (para comandos exclusivos de dueño)
    OWNER_DISCORD_ID=123456789012345678
@@ -222,6 +227,12 @@ Inicia el bot ejecutando el script principal:
 python la_creatura_bot.py
 ```
 *(En Windows también puedes utilizar el acceso directo `rundiscord.bat`).*
+
+### Sincronización de comandos slash
+
+Para desarrollo, configura `SLASH_COMMAND_GUILD_ID` con el ID de tu servidor. Los comandos aparecerán inmediatamente. Con `0`, el bot usa sincronización global, cuya propagación puede tardar hasta una hora.
+
+El bot debe ser invitado con los scopes `bot` y `applications.commands`.
 
 ---
 
@@ -275,6 +286,29 @@ El bot incluye una consola interactiva en tiempo real que se ejecuta en segundo 
 | `channels [guild_id]` | Muestra los canales de texto disponibles y sus IDs. |
 | `help` | Despliega la ayuda de comandos de consola. |
 | `exit` / `quit` | Apaga el bot de forma limpia y ordenada. |
+
+Durante la migración a SQLite también puedes ejecutar `migrate` para importar manualmente un archivo JSON legacy. La migración automática del primer arranque permanece habilitada cuando la base está vacía.
+
+---
+
+## 🧪 Validación local y publicación
+
+Antes de publicar una versión, ejecuta:
+
+```bash
+python -m ruff check la_creatura_bot.py economy/ console.py test_shop_and_lottery.py
+python -m ruff format --check la_creatura_bot.py economy/ console.py test_shop_and_lottery.py
+python -m mypy --ignore-missing-imports la_creatura_bot.py economy/ console.py
+python -m pytest test_shop_and_lottery.py -q
+python -m py_compile la_creatura_bot.py economy/*.py console.py
+```
+
+GitHub Actions ejecuta estas comprobaciones automáticamente en pushes y pull requests hacia `main` o `develop`. Para publicar `v1.1.0`, crea el tag anotado después de revisar el changelog:
+
+```bash
+git tag -a v1.1.0 -m "Release v1.1.0"
+git push origin v1.1.0
+```
 
 ---
 
