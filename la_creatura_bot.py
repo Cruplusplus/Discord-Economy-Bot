@@ -139,6 +139,10 @@ async def on_ready():
 
             if slash_command_guild_id:
                 guild = discord.Object(id=slash_command_guild_id)
+                # Los comandos definidos en el Cog se registran globalmente.
+                # Para que aparezcan de inmediato en un servidor de pruebas,
+                # hay que copiarlos explícitamente a su command tree local.
+                bot.tree.copy_global_to(guild=guild)
                 synced = await bot.tree.sync(guild=guild)
                 sync_scope = f"servidor {slash_command_guild_id}"
             else:

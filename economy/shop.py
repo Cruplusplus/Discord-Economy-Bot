@@ -231,7 +231,7 @@ class ShopSelect(discord.ui.Select):
 
         user_id = interaction.user.id
         async with self.shop_view.cog.db.lock:
-            user_data = self.shop_view.cog.db.get_user_data(user_id)
+            user_data = await self.shop_view.cog.db.get_user_data(user_id)
             wallet = user_data.get("wallet", 0)
 
             if wallet < item.price:

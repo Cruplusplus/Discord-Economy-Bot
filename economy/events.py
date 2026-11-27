@@ -152,7 +152,7 @@ class EconomyEventsMixin:
             richest_member, richest_total = await self._get_top_wealthy_member(guild)
             if richest_member and richest_total >= ROBIN_HOOD_MIN_WALLET:
                 async with self.db.lock:
-                    user_data = self.db.get_user_data(richest_member.id)
+                    user_data = await self.db.get_user_data(richest_member.id)
                     last_gamble = user_data.get("last_gamble", time.time())
 
                 idle_hours = max(0.0, (time.time() - last_gamble) / 3600.0)
@@ -293,7 +293,7 @@ class EconomyEventsMixin:
 
         if winner_msg is not None:
             async with self.db.lock:
-                u_data = self.db.get_user_data(winner_msg.author.id)
+                u_data = await self.db.get_user_data(winner_msg.author.id)
                 u_data["wallet"] += recompensa
                 await self.db.save()
 
@@ -440,7 +440,7 @@ class EconomyEventsMixin:
             return
 
         async with self.db.lock:
-            richest_data = self.db.get_user_data(richest_member.id)
+            richest_data = await self.db.get_user_data(richest_member.id)
             current_wallet = richest_data.get("wallet", 0)
             current_bank = richest_data.get("bank", 0)
             total_wealth = current_wallet + current_bank

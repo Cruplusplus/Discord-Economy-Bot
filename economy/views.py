@@ -59,7 +59,7 @@ class SoulDropView(discord.ui.View):
             button.disabled = True
             self.stop()
 
-            user_data = self.cog.db.get_user_data(interaction.user.id)
+            user_data = await self.cog.db.get_user_data(interaction.user.id)
             buffs = user_data.setdefault("buffs", {})
             kudzu_until = buffs.get("kudzu_until", 0.0)
             kudzu_bonus = 0
@@ -173,7 +173,7 @@ class RaidBossView(discord.ui.View):
                 self.stop()
                 payout = RAID_TOTAL_POOL // len(self.attackers)
                 for member in self.attackers:
-                    u_data = self.cog.db.get_user_data(member.id)
+                    u_data = await self.cog.db.get_user_data(member.id)
                     u_data["wallet"] += payout
                 await self.cog.db.save()
 
@@ -288,7 +288,7 @@ class RiskRouletteView(discord.ui.View):
             button.disabled = True
             self.stop()
 
-            user_data = self.cog.db.get_user_data(interaction.user.id)
+            user_data = await self.cog.db.get_user_data(interaction.user.id)
             now = time.time()
 
             won = random.random() < ROULETTE_RISK_WIN_CHANCE
@@ -408,7 +408,7 @@ class RobinHoodView(discord.ui.View):
             button.disabled = True
             self.stop()
 
-            user_data = self.cog.db.get_user_data(interaction.user.id)
+            user_data = await self.cog.db.get_user_data(interaction.user.id)
             user_data["wallet"] += self.amount
             await self.cog.db.save()
 

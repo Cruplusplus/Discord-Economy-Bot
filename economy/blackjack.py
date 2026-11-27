@@ -127,13 +127,8 @@ class BlackjackView(discord.ui.View):
         self.game_over = False
         self.message: discord.Message | None = None
 
-        # Deshabilitar Doblar si el usuario no tiene saldo suficiente en mano
-        user_wallet = self._get_user_wallet()
-        if user_wallet < self.bet:
-            self.double_button.disabled = True
-
-    def _get_user_wallet(self) -> int:
-        user_data = self.cog.db.get_user_data(self.user_id)
+    async def _get_user_wallet(self) -> int:
+        user_data = await self.cog.db.get_user_data(self.user_id)
         return user_data.get("wallet", 0)
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
@@ -150,7 +145,7 @@ class BlackjackView(discord.ui.View):
             if isinstance(child, discord.ui.Button):
                 child.disabled = True
 
-    def build_embed(
+    async def build_embed(
         self,
         title: str,
         description: str,
@@ -189,7 +184,7 @@ class BlackjackView(discord.ui.View):
             apuesta_str += f" *(Doblada: {self.initial_bet:,} x2)*"
         embed.add_field(name="💰 Apuesta en Mesa", value=apuesta_str, inline=True)
 
-        user_data = self.cog.db.get_user_data(self.user_id)
+        user_data = await self.cog.db.get_user_data(self.user_id)
         embed.add_field(
             name="💵 Tu Billetera Restante",
             value=f"{user_data.get('wallet', 0):,} {CURRENCY_SYMBOL}",
@@ -220,7 +215,7 @@ class BlackjackView(discord.ui.View):
             # Con 21 exactos, se planta automaticamente para jugar contra Ivy
             await self._finish_game(interaction, result_type="stand")
         else:
-            embed = self.build_embed(
+            embed = await self.build_embed(
                 title="🃏 Blackjack Callejero - Mano en Juego",
                 description="Robaste una carta. ¿Te plantas o buscas acercarte más a 21?",
                 color=discord.Color.blue(),
@@ -240,7 +235,7 @@ class BlackjackView(discord.ui.View):
             return
 
         async with self.cog.db.lock:
-            user_data = self.cog.db.get_user_data(self.user_id)
+            user_data = await self.cog.db.get_user_data(self.user_id)
             wallet = user_data.get("wallet", 0)
 
             if wallet < self.initial_bet:
@@ -306,7 +301,7 @@ class BlackjackView(discord.ui.View):
 
         # 3. Transaccion atomica en base de datos
         async with self.cog.db.lock:
-            user_data = self.cog.db.get_user_data(self.user_id)
+            user_data = await self.cog.db.get_user_data(self.user_id)
 
             if devolucion > 0:
                 user_data["wallet"] += devolucion
@@ -398,7 +393,7 @@ class BlackjackView(discord.ui.View):
         if is_richest and not is_valid_reset:
             footer_text = f"⚠️ [Magnate] Apuesta insuficiente para resetear inactividad. Mínimo: {req_bet:,} {CURRENCY_SYMBOL} ({int(MIN_RISK_BET_PERCENT * 100)}% de tu fortuna)."
 
-        final_embed = self.build_embed(
+        final_embed = await self.build_embed(
             title=title, description=desc, color=color, hide_dealer=False, footer_text=footer_text
         )
 

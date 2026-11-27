@@ -116,6 +116,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
     async def cog_load(self):
         """Inicializa la base de datos al cargar el Cog."""
         await self.db.initialize()
+        await super().cog_load()
         self._log.info("Base de datos SQLite inicializada correctamente")
 
     # --------------------------------------------------------------------------
@@ -892,10 +893,13 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
     async def _send_response(self, source, embed, view=None, ephemeral=False):
         """Envía respuesta compatible con Interaction y Context."""
         if hasattr(source, "response"):  # Interaction
+            kwargs = {"embed": embed, "ephemeral": ephemeral}
+            if view is not None:
+                kwargs["view"] = view
             if hasattr(source.response, "is_done") and source.response.is_done():
-                await source.followup.send(embed=embed, view=view, ephemeral=ephemeral)
+                await source.followup.send(**kwargs)
             else:
-                await source.response.send_message(embed=embed, view=view, ephemeral=ephemeral)
+                await source.response.send_message(**kwargs)
         else:  # Context
             if view:
                 await source.reply(embed=embed, view=view)
@@ -2203,7 +2207,7 @@ class Economy(EconomyEventsMixin, EconomyDuelsMixin, commands.Cog):
             dealer_hand=dealer_hand,
         )
 
-        initial_embed = view.build_embed(
+        initial_embed = await view.build_embed(
             title=f"🃏 Blackjack Callejero - Mano de {ctx.author.display_name}",
             description="Tiramos paño en la cornisa. ¿Qué jugada vas a hacer, chacho?",
             color=discord.Color.blue(),

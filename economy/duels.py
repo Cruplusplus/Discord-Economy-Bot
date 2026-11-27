@@ -65,8 +65,8 @@ class EconomyDuelsMixin:
             return
 
         async with self.db.lock:
-            attacker_data = self.db.get_user_data(ctx.author.id)
-            enemy_data = self.db.get_user_data(member.id)
+            attacker_data = await self.db.get_user_data(ctx.author.id)
+            enemy_data = await self.db.get_user_data(member.id)
 
             attacker_total = attacker_data.get("wallet", 0) + attacker_data.get("bank", 0)
             enemy_total = enemy_data.get("wallet", 0) + enemy_data.get("bank", 0)
@@ -143,8 +143,8 @@ class EconomyDuelsMixin:
 
             # Si acepto, verificamos que ambos tengan el dinero en mano (wallet)
             async with self.db.lock:
-                attacker_data = self.db.get_user_data(ctx.author.id)
-                enemy_data = self.db.get_user_data(member.id)
+                attacker_data = await self.db.get_user_data(ctx.author.id)
+                enemy_data = await self.db.get_user_data(member.id)
 
                 faltantes = []
                 if attacker_data["wallet"] < stake:
@@ -252,10 +252,10 @@ class EconomyDuelsMixin:
         payouts_info = []
 
         async with self.db.lock:
-            winner_data = self.db.get_user_data(winner.id)
+            winner_data = await self.db.get_user_data(winner.id)
             winner_data["wallet"] += duel_pool
 
-            loser_data = self.db.get_user_data(loser_id)
+            loser_data = await self.db.get_user_data(loser_id)
             loser_data["last_loss"] = {
                 "amount": stake,
                 "game": f"duelo contra {winner.display_name}",
@@ -265,7 +265,7 @@ class EconomyDuelsMixin:
 
             if winning_bets:
                 for bet in winning_bets:
-                    bettor_data = self.db.get_user_data(bet["user"].id)
+                    bettor_data = await self.db.get_user_data(bet["user"].id)
                     if losing_pool > 0:
                         ganancia_extra = (
                             int(losing_pool * bet["amount"] / winning_total)
@@ -292,7 +292,7 @@ class EconomyDuelsMixin:
                 winner_data["wallet"] += losing_pool
 
             for bet in losing_bets:
-                bettor_data = self.db.get_user_data(bet["user"].id)
+                bettor_data = await self.db.get_user_data(bet["user"].id)
                 bettor_data["last_loss"] = {
                     "amount": bet["amount"],
                     "game": f"apuesta en duelo ({loser.display_name})",
@@ -454,7 +454,7 @@ class EconomyDuelsMixin:
             return
 
         async with self.db.lock:
-            bettor_data = self.db.get_user_data(ctx.author.id)
+            bettor_data = await self.db.get_user_data(ctx.author.id)
             amount = self._parse_amount(monto_str, bettor_data["wallet"])
             if amount is None or amount <= 0 or amount > bettor_data["wallet"]:
                 await ctx.reply(
